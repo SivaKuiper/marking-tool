@@ -24,29 +24,11 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo } = React;
 
         function App() {
-            // --- AUTO-SAVE LOGIC ---
-            const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('kuiper_header');
-                return saved ? JSON.parse(saved) : { marker: '', supervisor: '', container: '', factory: '', dest: '', colour: '' };
-            });
-
-            const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('kuiper_entries');
-                return saved ? JSON.parse(saved) : [];
-            });
-
-            useEffect(() => {
-                localStorage.setItem('kuiper_header', JSON.stringify(header));
-            }, [header]);
-
-            useEffect(() => {
-                localStorage.setItem('kuiper_entries', JSON.stringify(entries));
-            }, [entries]);
-            // ------------------------
-
+            const [header, setHeader] = useState({ marker: '', supervisor: '', container: '', factory: '', dest: '', colour: '' });
+            const [entries, setEntries] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [lengthFilter, setLengthFilter] = useState(null);
             const [editingId, setEditingId] = useState(null);
@@ -82,15 +64,6 @@
                 }
                 setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });
                 document.getElementById('file-upload').value = "";
-            };
-
-            const resetData = () => {
-                if (window.confirm("ARE YOU SURE? This will permanently delete all entries for this container.")) {
-                    setEntries([]);
-                    setHeader({ marker: '', supervisor: '', container: '', factory: '', dest: '', colour: '' });
-                    localStorage.removeItem('kuiper_entries');
-                    localStorage.removeItem('kuiper_header');
-                }
             };
 
             const duplicateSlab = (slab) => {
@@ -131,19 +104,18 @@
 
             return (
                 <div className="max-w-6xl mx-auto p-4 md:p-8 print:p-0">
-                    {/* CORPORATE HEADER */}
+                    {/* KUIPER CORPORATE HEADER */}
                     <div className="bg-white border-2 border-black p-6 mb-4 relative shadow-sm">
                         <div className="flex justify-between items-center border-b-2 border-black pb-4">
                             <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 bg-blue-900 rounded flex items-center justify-center text-white font-black text-2xl italic shadow-inner">K</div>
+                                <div className="w-16 h-16 bg-blue-900 rounded flex items-center justify-center text-white font-black text-2xl italic">K</div>
                                 <div>
                                     <h1 className="text-2xl font-black text-blue-900 leading-none">KUIPER</h1>
                                     <h2 className="text-xs font-bold tracking-widest text-slate-500 uppercase">EXPORTS & IMPORTS PVT LTD</h2>
                                 </div>
                             </div>
-                            <div className="flex gap-2 no-print">
-                                <button onClick={resetData} className="bg-red-50 text-red-700 px-4 py-2 rounded font-bold uppercase text-[10px] border border-red-200 hover:bg-red-600 hover:text-white transition-all">Reset Container</button>
-                                <button onClick={() => window.print()} className="bg-blue-800 text-white px-6 py-2 rounded font-bold uppercase text-[10px] hover:bg-black transition-colors shadow-md">Generate PDF</button>
+                            <div className="text-right no-print">
+                                <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded font-bold uppercase text-xs hover:bg-black transition-colors">Generate Official PDF</button>
                             </div>
                         </div>
                         
@@ -151,27 +123,27 @@
                             {['marker', 'supervisor', 'container', 'factory', 'dest', 'colour'].map(key => (
                                 <div key={key} className="border-b border-slate-200">
                                     <label className="block text-[8px] uppercase font-bold text-slate-400">{key}</label>
-                                    <input className="w-full font-bold outline-none text-xs bg-transparent py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} />
+                                    <input className="w-full font-bold outline-none text-xs bg-transparent py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} placeholder="..." />
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* INPUT FORM */}
+                    {/* DYNAMIC INPUT FORM */}
                     <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 border-l-8 border-blue-600 shadow-2xl">
-                        <div className="flex justify-between mb-4 items-center">
+                        <div className="flex justify-between mb-4">
                             <h3 className="text-xs font-bold uppercase text-blue-400 tracking-widest">{editingId ? '⚠️ Editing Existing Slab' : '➕ Add New Entry'}</h3>
-                            <div className="text-[10px] text-green-500 font-bold animate-pulse">● AUTO-SAVE ENABLED</div>
+                            {editingId && <button onClick={() => {setEditingId(null); setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });}} className="text-[10px] bg-red-600 px-2 py-1 rounded font-bold">CANCEL EDIT</button>}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                             <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                                <div><label className="text-[9px] text-slate-500 uppercase font-black">Gross Dimensions (L x W)</label>
+                                <div><label className="text-[9px] text-slate-500 uppercase font-black">Gross Dimensions</label>
                                     <div className="flex gap-1 mt-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded font-black" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-black" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
                                     </div>
                                 </div>
-                                <div><label className="text-[9px] text-green-500 uppercase font-black">Net Dimensions (L x W)</label>
+                                <div><label className="text-[9px] text-green-500 uppercase font-black">Net Dimensions</label>
                                     <div className="flex gap-1 mt-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
@@ -180,57 +152,61 @@
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[9px] text-slate-500 uppercase font-black">Slab Image</label>
-                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} className="text-[10px] block w-full text-slate-400" />
+                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} className="text-[10px] block w-full text-slate-400 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-blue-600 file:text-white" />
                             </div>
-                            <button onClick={addOrUpdateSlab} className={`w-full font-black py-3 rounded uppercase text-sm shadow-lg transform active:scale-95 transition-all ${editingId ? 'bg-orange-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
-                                {editingId ? 'Update Slab' : 'Save Slab Entry'}
+                            <button onClick={addOrUpdateSlab} className={`w-full font-black py-3 rounded uppercase text-sm shadow-lg transform active:scale-95 transition-all ${editingId ? 'bg-orange-500' : 'bg-blue-600'}`}>
+                                {editingId ? 'Update Slab Data' : 'Save Slab Entry'}
                             </button>
                         </div>
                     </div>
 
-                    {/* FILTERS */}
-                    <div className="no-print bg-white p-4 rounded-lg mb-4 border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm sticky top-0 z-10">
+                    {/* SMART FILTERS */}
+                    <div className="no-print bg-white p-4 rounded-lg mb-4 border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
                         <div className="flex-1 min-w-[200px]">
-                            <input type="text" placeholder="🔍 Search Slab ID or Length..." className="w-full p-2 bg-slate-100 rounded text-sm outline-none" onChange={e => setSearchTerm(e.target.value)} />
+                            <input type="text" placeholder="🔍 Search Slab Number..." className="w-full p-2 bg-slate-100 rounded text-sm outline-none focus:ring-2 ring-blue-500" onChange={e => setSearchTerm(e.target.value)} />
                         </div>
                         <div className="flex gap-2">
-                            {['all', 'small', 'std', 'jumbo'].map(f => (
-                                <button key={f} onClick={() => setLengthFilter(f === 'all' ? null : f)} className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase border ${lengthFilter === (f === 'all' ? null : f) ? 'filter-active' : 'bg-white text-slate-400'}`}>{f}</button>
-                            ))}
+                            <button onClick={() => setLengthFilter(null)} className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase border ${!lengthFilter ? 'filter-active' : 'bg-white text-slate-400'}`}>All</button>
+                            <button onClick={() => setLengthFilter('small')} className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase border ${lengthFilter === 'small' ? 'filter-active' : 'bg-white text-slate-400'}`}>&lt; 200</button>
+                            <button onClick={() => setLengthFilter('std')} className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase border ${lengthFilter === 'std' ? 'filter-active' : 'bg-white text-slate-400'}`}>200-299</button>
+                            <button onClick={() => setLengthFilter('jumbo')} className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase border ${lengthFilter === 'jumbo' ? 'filter-active' : 'bg-white text-slate-400'}`}>300+</button>
                         </div>
                     </div>
 
-                    {/* TABLE */}
-                    <div className="bg-white table-outline overflow-hidden shadow-sm">
+                    {/* MAIN TABLE */}
+                    <div className="bg-white table-outline overflow-hidden rounded-sm">
                         <table className="w-full border-collapse">
                             <thead className="bg-slate-900 text-white uppercase text-[9px] tracking-widest">
                                 <tr>
                                     <th className="p-3 text-left">Slab No</th>
                                     <th className="p-3 text-center">Photo</th>
-                                    <th className="p-3 text-center">Gross SQM</th>
-                                    <th className="p-3 text-center">Net SQM</th>
-                                    <th className="p-3 text-center">Loss %</th>
-                                    <th className="p-3 text-right no-print">Actions</th>
+                                    <th className="p-3 text-center">Gross (SQM)</th>
+                                    <th className="p-3 text-center">Net (SQM)</th>
+                                    <th className="p-3 text-center">Allowance</th>
+                                    <th className="p-3 text-right no-print">Manage Data</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {filteredEntries.map((e) => (
-                                    <tr key={e.id} className="hover:bg-blue-50/50">
+                                    <tr key={e.id} className="hover:bg-blue-50/50 transition-colors">
                                         <td className="p-3">
                                             <div className="font-black text-sm text-blue-900">{e.slabNo}</div>
-                                            <div className="text-[9px] text-slate-400">{e.gL}x{e.gW} cm</div>
+                                            <div className="text-[9px] text-slate-400">{e.gL} × {e.gW} cm</div>
                                         </td>
                                         <td className="p-2 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover border rounded print-photo" /> : '-'}
+                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover border-2 border-slate-100 rounded print-photo shadow-sm" /> : '-'}
                                         </td>
                                         <td className="p-3 text-center font-bold text-xs">{e.gSqm}</td>
                                         <td className="p-3 text-center font-bold text-xs text-green-700">{e.nSqm}</td>
-                                        <td className="p-3 text-center text-[10px] font-bold text-red-500">{e.pct}%</td>
+                                        <td className="p-3 text-center">
+                                            <div className="text-[10px] font-black text-red-600">-{e.diff}</div>
+                                            <div className="text-[8px] text-red-400 font-bold">{e.pct}%</div>
+                                        </td>
                                         <td className="p-3 text-right no-print">
                                             <div className="flex justify-end gap-1">
-                                                <button onClick={() => duplicateSlab(e)} className="p-1.5 bg-slate-100 rounded">📋</button>
-                                                <button onClick={() => editSlab(e)} className="p-1.5 bg-blue-100 rounded">✏️</button>
-                                                <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="p-1.5 text-red-400">✕</button>
+                                                <button onClick={() => duplicateSlab(e)} title="Duplicate" className="p-1 bg-slate-100 rounded hover:bg-slate-200">📋</button>
+                                                <button onClick={() => editSlab(e)} title="Edit" className="p-1 bg-blue-100 rounded hover:bg-blue-200">✏️</button>
+                                                <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} title="Delete" className="p-1 text-red-400 hover:text-red-700">✕</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -239,15 +215,16 @@
                         </table>
                     </div>
 
-                    {/* TOTALS & SUMMARY */}
+                    {/* SUMMARY & TOTALS SECTION */}
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Length Summary Chart */}
                         <div className="bg-white border-2 border-black p-4">
                             <h4 className="text-[10px] font-black uppercase mb-3 border-b pb-1">Container Length Summary</h4>
                             <div className="space-y-2">
                                 {[ ['Small (<200)', lengthSummary.small, 'bg-slate-400'], ['Standard (200-299)', lengthSummary.std, 'bg-blue-600'], ['Jumbo (300+)', lengthSummary.jumbo, 'bg-blue-900'] ].map(([label, count, color]) => (
                                     <div key={label} className="flex items-center gap-3">
                                         <div className="text-[9px] font-bold w-28 uppercase">{label}</div>
-                                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
                                             <div className={`${color} h-full`} style={{ width: `${(count / (entries.length || 1)) * 100}%` }}></div>
                                         </div>
                                         <div className="text-[10px] font-black w-8 text-right">{count}</div>
@@ -255,24 +232,26 @@
                                 ))}
                             </div>
                         </div>
-                        <div className="bg-blue-900 text-white p-4 border-2 border-black shadow-lg">
+
+                        {/* Grand Totals */}
+                        <div className="bg-blue-900 text-white p-4 border-2 border-black">
                             <div className="flex justify-between border-b border-blue-800 pb-2 mb-2">
-                                <span className="text-[10px] font-bold uppercase opacity-70">Slab Count</span>
+                                <span className="text-[10px] font-bold uppercase">Total Slab Count</span>
                                 <span className="font-black">{entries.length} Slabs</span>
                             </div>
                             <div className="flex justify-between border-b border-blue-800 pb-2 mb-2">
-                                <span className="text-[10px] font-bold uppercase opacity-70">Total Gross Area</span>
-                                <span className="font-black">{totals.g} SQM</span>
+                                <span className="text-[10px] font-bold uppercase">Gross Area (SQM)</span>
+                                <span className="font-black">{totals.g}</span>
                             </div>
-                            <div className="flex justify-between items-center mt-2">
-                                <span className="text-[10px] font-bold uppercase text-blue-300">Net Total (Payable)</span>
-                                <span className="text-2xl font-black text-green-400">{totals.n} SQM</span>
+                            <div className="flex justify-between">
+                                <span className="text-[10px] font-bold uppercase text-blue-300">Total Net Area (SQM)</span>
+                                <span className="text-xl font-black text-green-400">{totals.n}</span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-8 text-[8px] text-center text-slate-400 uppercase tracking-widest font-bold border-t pt-4">
-                        Official Packing List - Generated via Kuiper Digital Inspection Tool
+                    <div className="mt-8 text-[8px] text-center text-slate-400 uppercase tracking-widest font-bold">
+                        Official Inspection Document - Kuiper Exports & Imports Pvt Ltd
                     </div>
                 </div>
             );
