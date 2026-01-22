@@ -13,8 +13,8 @@
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
             table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #000 !important; padding: 6px; font-size: 10px; }
-            .print-photo { width: 80px; height: 80px; object-fit: cover; }
+            th, td { border: 1px solid #000 !important; padding: 4px; font-size: 9px; }
+            .print-photo { width: 70px; height: 70px; object-fit: cover; }
         }
         .table-outline { border: 2px solid #000; }
     </style>
@@ -57,7 +57,6 @@
                 };
                 setEntries([...entries, newSlab]);
                 setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });
-                // Reset file input manually
                 document.getElementById('file-upload').value = "";
             };
 
@@ -108,11 +107,11 @@
                             </div>
 
                             <div className="space-y-2">
-                                <label className="block text-[10px] text-blue-400 uppercase font-bold">Step 1: Capture Photo</label>
-                                <input id="file-upload" type="file" accept="image/*" capture="environment" onChange={handlePhoto} 
+                                <label className="block text-[10px] text-blue-400 uppercase font-bold">Step 1: Camera or Gallery</label>
+                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} 
                                     className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" 
                                 />
-                                {current.photo && <div className="text-[10px] text-green-400 font-bold">✓ Photo Attached</div>}
+                                {current.photo && <div className="text-[10px] text-green-400 font-bold flex items-center gap-1">✓ Photo Selected <img src={current.photo} className="h-6 w-6 rounded border border-white" /></div>}
                             </div>
 
                             <div className="flex items-end">
@@ -128,46 +127,56 @@
                         <table className="w-full border-collapse">
                             <thead className="bg-slate-100 border-b-2 border-black">
                                 <tr>
-                                    <th className="p-2 text-left w-12 text-[9px]">S.No</th>
-                                    <th className="p-2 text-left text-[11px]">Slab ID</th>
-                                    <th className="p-2 text-center text-[11px]">Photo</th>
-                                    <th className="p-2 text-center text-[11px]">Gross (cm)</th>
-                                    <th className="p-2 text-center text-[11px] bg-blue-50">Gross SQM</th>
-                                    <th className="p-2 text-center text-[11px]">Net (cm)</th>
-                                    <th className="p-2 text-center text-[11px] bg-green-50">Net SQM</th>
-                                    <th className="p-2 text-right text-[9px]">Inspec. Time</th>
-                                    <th className="p-2 text-center no-print text-[11px]">Action</th>
+                                    <th className="p-2 text-left w-10 text-[8px]">S.No</th>
+                                    <th className="p-2 text-left text-[10px]">Slab ID</th>
+                                    <th className="p-2 text-center text-[10px]">Photo</th>
+                                    <th className="p-2 text-center text-[10px]">Gross (cm)</th>
+                                    <th className="p-2 text-center text-[10px] bg-blue-50">Gross SQM</th>
+                                    <th className="p-2 text-center text-[10px]">Net (cm)</th>
+                                    <th className="p-2 text-center text-[10px] bg-green-50">Net SQM</th>
+                                    <th className="p-2 text-right text-[8px]">Date/Time</th>
+                                    <th className="p-2 text-center no-print text-[10px]">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-300">
                                 {entries.map((e, i) => (
                                     <tr key={e.id} className="print:break-inside-avoid">
-                                        <td className="p-2 text-slate-400 text-[10px]">{i + 1}</td>
-                                        <td className="p-2 font-black text-sm">{e.slabNo}</td>
+                                        <td className="p-2 text-slate-400 text-[9px]">{i + 1}</td>
+                                        <td className="p-2 font-black text-xs">{e.slabNo}</td>
                                         <td className="p-2 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-20 w-20 mx-auto object-cover border border-black print-photo" /> : <span className="text-[8px] text-slate-300">N/A</span>}
+                                            {e.photo ? <img src={e.photo} className="h-16 w-16 mx-auto object-cover border border-black print-photo" /> : <span className="text-[7px] text-slate-300 uppercase">N/A</span>}
                                         </td>
-                                        <td className="p-2 text-center">{e.gL}×{e.gW}</td>
-                                        <td className="p-2 text-center font-bold bg-blue-50/30">{e.gSqm}</td>
-                                        <td className="p-2 text-center">{e.nL}×{e.nW}</td>
-                                        <td className="p-2 text-center font-bold text-green-700 bg-green-50/30">{e.nSqm}</td>
-                                        <td className="p-2 text-right text-[8px] font-mono text-slate-500 uppercase">{e.time}</td>
+                                        <td className="p-2 text-center text-xs">{e.gL}×{e.gW}</td>
+                                        <td className="p-2 text-center font-bold text-xs bg-blue-50/30">{e.gSqm}</td>
+                                        <td className="p-2 text-center text-xs">{e.nL}×{e.nW}</td>
+                                        <td className="p-2 text-center font-bold text-xs text-green-700 bg-green-50/30">{e.nSqm}</td>
+                                        <td className="p-2 text-right text-[7px] font-mono text-slate-500 uppercase">{e.time}</td>
                                         <td className="p-2 text-center no-print">
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-500 font-bold text-xs p-1">Delete</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-500 font-bold text-[10px] hover:bg-red-50 p-1 rounded">Delete</button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                             <tfoot className="border-t-2 border-black bg-slate-50 font-black">
-                                <tr className="text-xs">
+                                <tr className="text-[10px]">
                                     <td colSpan="4" className="p-4 text-right uppercase tracking-tighter">Grand Total SQM:</td>
-                                    <td className="p-4 text-center border-x border-black text-blue-800 text-sm">{totals.g}</td>
+                                    <td className="p-4 text-center border-x border-black text-blue-800 text-xs">{totals.g}</td>
                                     <td></td>
-                                    <td className="p-4 text-center border-x border-black text-green-800 text-sm">{totals.n}</td>
+                                    <td className="p-4 text-center border-x border-black text-green-800 text-xs">{totals.n}</td>
                                     <td colSpan="2"></td>
                                 </tr>
                             </tfoot>
                         </table>
+                    </div>
+                    
+                    {/* SIGNATURE SECTION (For Printed Reports) */}
+                    <div className="mt-12 hidden print:grid grid-cols-2 gap-20">
+                        <div className="border-t border-black pt-2 text-center">
+                            <p className="text-[10px] font-bold uppercase">Supervisor Signature</p>
+                        </div>
+                        <div className="border-t border-black pt-2 text-center">
+                            <p className="text-[10px] font-bold uppercase">Factory Representative</p>
+                        </div>
                     </div>
                 </div>
             );
