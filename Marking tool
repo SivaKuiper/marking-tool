@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KEIPL Container Marking Tool</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/lucide-static/0.321.0/lucide.min.css" rel="stylesheet">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; }
+            .card { border: none !important; box-shadow: none !important; }
+        }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        function App() {
+            const [headerData, setHeaderData] = useState({
+                markerName: '',
+                supervisorName: '',
+                containerNo: '',
+                factoryName: '',
+                destination: '',
+                colour: ''
+            });
+
+            const [entries, setEntries] = useState([]);
+            const [currentEntry, setCurrentEntry] = useState({
+                classType: 'Shorts',
+                gLength: '',
+                gWidth: '',
+                nLength: '',
+                nWidth: '',
+                photoPreview: null
+            });
+
+            // Logic to auto-sync Net with Gross initially
+            const handleGrossChange = (field, value) => {
+                setCurrentEntry(prev => {
+                    const updates = { [field]: value };
+                    // If user hasn't manually touched Net, keep it same as Gross
+                    if (field === 'gLength') updates.nLength = value;
+                    if (field === 'gWidth') updates.nWidth = value;
+                    return { ...prev, ...updates };
+                });
+            };
+
+            const calculateSQM = (l, w) => {
+                const length = parseFloat(l) || 0;
+                const width = parseFloat(w) || 0;
+                return ((length * width) / 10000).toFixed(3);
+            };
+
+            const addEntry = () => {
+                if (!currentEntry.gLength || !currentEntry.gWidth) {
+                    alert('Please enter Gross measurements');
+                    return;
+                }
+
+                const newEntry = {
+                    ...currentEntry,
+                    id: Date.now(),
+                    slabNo: `KEIPL/${entries.length + 1}`,
+                    gSqm: calculateSQM(currentEntry.gLength, currentEntry.gWidth),
+                    nSqm: calculateSQM(currentEntry.nLength, currentEntry.nWidth),
+                    timestamp: new Date().toLocaleString()
+                };
+
+                setEntries([...entries, newEntry]);
+                // Reset dimensions but keep Class
+                setCurrentEntry({
+                    ...currentEntry,
+                    gLength: '', gWidth: '', nLength: '', nWidth: '', photoPreview: null
+                });
+            };
+
+            const deleteEntry = (id) => {
+                const filtered = entries.filter(e => e.id !== id);
+                // Re-calculate Slab Numbers
+                const reNumbered = filtered.map((e, index) => ({
+                    ...e,
+                    slabNo: `KEIPL/${index + 1}`
+                }));
+                setEntries(reNumbered);
+            };
+
+            const totals = useMemo(() => {
+                const gTotal = entries.reduce((sum, e) => sum + parseFloat(e.gSqm), 0);
+                const nTotal = entries.reduce((sum, e) => sum + parseFloat(e.nSqm), 0);
+                return { gross: gTotal.toFixed(3), net: nTotal.toFixed(3) };
+            }, [entries]);
+
+            const downloadCSV = () => {
+                let csv = `MARKER,${headerData.markerName},SUPERVISOR,${headerData.supervisorName}\n`;
+                csv += `CONTAINER,${headerData.containerNo},FACTORY,${headerData.factoryName}\n`;
+                csv += `DESTINATION,${headerData.destination},COLOUR,${headerData.colour}\n\n`;
+                
+                csv += `S.No,Slab Number,Class,Gross L,Gross W,Gross SQM,Net L,Net W,Net SQM,Time\n`;
+                
+                entries.forEach((e, i) => {
+                    csv += `${i+1},${e.slabNo},${e.classType},${e.gLength},${e.gWidth},${e.gSqm},${e.nLength},${e.nWidth},${e.nSqm},${e.timestamp}\n`;
+                });
+
+                csv += `\nTOTALS,,,,,,,,,GROSS SQM,${totals.gross}\n,,,,,,,,,NET SQM,${totals.net}`;
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${headerData.containerNo || 'Container'}_Report.csv`;
+                a.click();
+            };
+
+            return (
+                <div className="p-4 md:p-8 max-w-5xl mx-auto">
+                    {/* Persistent Header Section */}
+                    <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
+                        <h1 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                             Container Header Information
+                        </h1>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="text" placeholder="Marker Name" className="p-2 border rounded" 
+                                value={headerData.markerName} onChange={e => setHeaderData({...headerData, markerName: e.target.value})} />
+                            <input type="text" placeholder="Supervisor Name" className="p-2 border rounded" 
+                                value={headerData.supervisorName} onChange={e => setHeaderData({...headerData, supervisorName: e.target.value})} />
+                            <input type="text" placeholder="Container Number" className="p-2 border rounded" 
+                                value={headerData.containerNo} onChange={e => setHeaderData({...headerData, containerNo: e.target.value})} />
+                            <input type="text" placeholder="Factory Name" className="p-2 border rounded" 
+                                value={headerData.factoryName} onChange={e => setHeaderData({...headerData, factoryName: e.target.value})} />
+                            <input type="text" placeholder="Destination" className="p-2 border rounded" 
+                                value={headerData.destination} onChange={e => setHeaderData({...headerData, destination: e.target.value})} />
+                            <select className="p-2 border rounded" value={headerData.colour} onChange={e => setHeaderData({...headerData, colour: e.target.value})}>
+                                <option value="">Select Colour</option>
+                                <option>Black Galaxy</option><option>Absolute Black</option><option>Tan Brown</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Entry Form */}
+                    <div className="no-print bg-white rounded-xl shadow-sm border p-6 mb-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="font-bold">Entry for Slab: <span className="text-blue-600">KEIPL/{entries.length + 1}</span></h2>
+                            <select className="p-1 border rounded text-sm" value={currentEntry.classType} 
+                                onChange={e => setCurrentEntry({...currentEntry, classType: e.target.value})}>
+                                <option>Shorts</option><option>Longs</option>
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Gross Size (cm)</label>
+                                <input type="number" placeholder="L" className="w-full p-2 border rounded" 
+                                    value={currentEntry.gLength} onChange={e => handleGrossChange('gLength', e.target.value)} />
+                                <input type="number" placeholder="W" className="w-full p-2 border rounded" 
+                                    value={currentEntry.gWidth} onChange={e => handleGrossChange('gWidth', e.target.value)} />
+                                <div className="text-[10px] text-blue-600 font-bold">SQM: {calculateSQM(currentEntry.gLength, currentEntry.gWidth)}</div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Net Size (cm)</label>
+                                <input type="number" placeholder="L" className="w-full p-2 border rounded bg-green-50" 
+                                    value={currentEntry.nLength} onChange={e => setCurrentEntry({...currentEntry, nLength: e.target.value})} />
+                                <input type="number" placeholder="W" className="w-full p-2 border rounded bg-green-50" 
+                                    value={currentEntry.nWidth} onChange={e => setCurrentEntry({...currentEntry, nWidth: e.target.value})} />
+                                <div className="text-[10px] text-green-600 font-bold">SQM: {calculateSQM(currentEntry.nLength, currentEntry.nWidth)}</div>
+                            </div>
+                            
+                            <div className="flex flex-col justify-end">
+                                <button onClick={addEntry} className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 transition">
+                                    ADD SLAB
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Data Table */}
+                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                        <div className="p-4 border-b flex justify-between items-center bg-slate-50 no-print">
+                            <h2 className="font-bold">Marking List ({entries.length})</h2>
+                            <div className="flex gap-2">
+                                <button onClick={() => window.print()} className="px-4 py-2 bg-slate-200 rounded text-sm font-medium">Print PDF</button>
+                                <button onClick={downloadCSV} className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium">Export CSV</button>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-100 border-b text-xs uppercase font-bold text-slate-600">
+                                    <tr>
+                                        <th className="p-3">Slab No</th>
+                                        <th className="p-3">Class</th>
+                                        <th className="p-3">Gross (LxW)</th>
+                                        <th className="p-3 text-blue-600">Gross SQM</th>
+                                        <th className="p-3">Net (LxW)</th>
+                                        <th className="p-3 text-green-600">Net SQM</th>
+                                        <th className="p-3 no-print">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {entries.map((e) => (
+                                        <tr key={e.id} className="hover:bg-slate-50">
+                                            <td className="p-3 font-medium">{e.slabNo}</td>
+                                            <td className="p-3">{e.classType}</td>
+                                            <td className="p-3 text-gray-500">{e.gLength}×{e.gWidth}</td>
+                                            <td className="p-3 font-bold text-blue-600">{e.gSqm}</td>
+                                            <td className="p-3 text-gray-500">{e.nLength}×{e.nWidth}</td>
+                                            <td className="p-3 font-bold text-green-600">{e.nSqm}</td>
+                                            <td className="p-3 no-print">
+                                                <button onClick={() => deleteEntry(e.id)} className="text-red-500">Delete</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="p-6 bg-slate-900 text-white grid grid-cols-2 gap-4 text-center">
+                            <div>
+                                <div className="text-xs text-slate-400 uppercase">Total Gross SQM</div>
+                                <div className="text-2xl font-bold tracking-tight">{totals.gross}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-400 uppercase">Total Net SQM</div>
+                                <div className="text-2xl font-bold tracking-tight text-green-400">{totals.net}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
