@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kuiper Exports & Imports - Official Report</title>
+    <title>Kuiper Exports & Imports - Inspection Tool</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,6 +14,7 @@
             body { background: white; padding: 0; }
             table { border-collapse: collapse; width: 100%; }
             th, td { border: 1px solid #000 !important; padding: 4px; font-size: 8px; }
+            .print-photo { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
         }
         .table-outline { border: 2px solid #000; }
         .filter-active { background-color: #1e3a8a !important; color: white !important; }
@@ -26,28 +27,31 @@
         const { useState, useMemo, useEffect } = React;
 
         function App() {
-            // Safe Initial State
             const [header, setHeader] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('kuiper_v5_header');
-                    return saved ? JSON.parse(saved) : { marker: '', container: '', factory: '', colour: '', defThickness: '2' };
-                } catch (e) { return { marker: '', container: '', factory: '', colour: '', defThickness: '2' }; }
+                const saved = localStorage.getItem('kuiper_v6_header');
+                return saved ? JSON.parse(saved) : { marker: '', supervisor: '', container: '', factory: '', colour: '', defThickness: '2' };
             });
 
             const [entries, setEntries] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('kuiper_v5_entries');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) { return []; }
+                const saved = localStorage.getItem('kuiper_v6_entries');
+                return saved ? JSON.parse(saved) : [];
             });
 
-            useEffect(() => { localStorage.setItem('kuiper_v5_header', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('kuiper_v5_entries', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('kuiper_v6_header', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('kuiper_v6_entries', JSON.stringify(entries)); }, [entries]);
 
             const [searchTerm, setSearchTerm] = useState('');
-            const [lengthFilter, setLengthFilter] = useState('all');
             const [editingId, setEditingId] = useState(null);
             const [current, setCurrent] = useState({ gL: '', gW: '', nL: '', nW: '', thick: '', photo: null });
+
+            const handlePhoto = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setCurrent(prev => ({ ...prev, photo: reader.result }));
+                    reader.readAsDataURL(file);
+                }
+            };
 
             const addOrUpdateSlab = () => {
                 if (!current.gL || !current.gW) return alert("Enter dimensions");
@@ -58,15 +62,14 @@
                 const weightKg = gSqm * (parseFloat(activeThick) / 100) * 2850;
 
                 if (editingId) {
-                    setEntries(entries.map(e => e.id === editingId ? { 
-                        ...e, ...current, thick: activeThick, 
-                        gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3), weight: weightKg.toFixed(0) 
-                    } : e));
+                    setEntries(entries.map(e => e.id === editingId ? { ...e, ...current, thick: activeThick, gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3), weight: weightKg.toFixed(0) } : e));
                     setEditingId(null);
                 } else {
+                    const count = entries.length + 1;
+                    const formattedNo = count < 10 ? `0${count}` : count;
                     const newSlab = {
                         ...current, id: Date.now(), thick: activeThick,
-                        slabNo: `KP/${entries.length + 1}`,
+                        slabNo: `KEIPL/${formattedNo}`,
                         gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3),
                         weight: weightKg.toFixed(0),
                         time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
@@ -77,104 +80,114 @@
                 if(document.getElementById('file-upload')) document.getElementById('file-upload').value = "";
             };
 
+            const downloadExcel = () => {
+                let csv = `KUIPER EXPORTS & IMPORTS - CONTAINER REPORT\nContainer,${header.container},Supervisor,${header.supervisor}\n\n`;
+                csv += `Slab No,Length,Width,Thick,Gross SQM,Net SQM,Weight(kg)\n`;
+                entries.forEach(e => {
+                    csv += `${e.slabNo},${e.gL},${e.gW},${e.thick},${e.gSqm},${e.nSqm},${e.weight}\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `KEIPL_${header.container || 'Report'}.csv`;
+                a.click();
+            };
+
             const totals = useMemo(() => {
-                const gArea = entries.reduce((s, e) => s + (parseFloat(e.gSqm) || 0), 0);
                 const nArea = entries.reduce((s, e) => s + (parseFloat(e.nSqm) || 0), 0);
                 const totalKg = entries.reduce((s, e) => s + (parseFloat(e.weight) || 0), 0);
-                return { g: gArea.toFixed(3), n: nArea.toFixed(3), mt: (totalKg / 1000).toFixed(3) };
+                return { n: nArea.toFixed(3), mt: (totalKg / 1000).toFixed(3) };
             }, [entries]);
 
             const filteredEntries = useMemo(() => {
-                return entries.filter(e => {
-                    const matchesSearch = e.slabNo.toLowerCase().includes(searchTerm.toLowerCase());
-                    if (lengthFilter === 'all') return matchesSearch;
-                    const len = parseInt(e.gL);
-                    if (lengthFilter === 'small') return matchesSearch && len < 200;
-                    if (lengthFilter === 'std') return matchesSearch && len >= 200 && len < 300;
-                    if (lengthFilter === 'jumbo') return matchesSearch && len >= 300;
-                    return matchesSearch;
-                });
-            }, [entries, searchTerm, lengthFilter]);
+                return entries.filter(e => e.slabNo.toLowerCase().includes(searchTerm.toLowerCase()));
+            }, [entries, searchTerm]);
 
             return (
                 <div className="max-w-6xl mx-auto p-4 md:p-8">
-                    <div className="bg-white border-2 border-black p-6 mb-4 shadow-sm">
-                        <div className="flex justify-between items-center border-b-2 border-black pb-4 mb-6">
+                    {/* CORPORATE HEADER */}
+                    <div className="bg-white border-2 border-black p-6 mb-4 shadow-md relative">
+                        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
                             <div>
-                                <h1 className="text-3xl font-black text-blue-900 leading-none">KUIPER</h1>
-                                <h2 className="text-xs font-bold tracking-widest text-slate-500 uppercase">EXPORTS & IMPORTS PVT LTD</h2>
+                                <h1 className="text-4xl font-black text-blue-900 leading-none tracking-tighter">KUIPER</h1>
+                                <h2 className="text-[11px] font-bold tracking-[0.3em] text-slate-500 uppercase mt-1">Exports & Imports Pvt Ltd</h2>
                             </div>
-                            <div className="text-right">
-                                <label className="block text-[8px] font-bold text-slate-400 uppercase">Default Thickness (cm)</label>
-                                <input type="number" className="w-20 text-right font-black text-xl border-b-2 border-blue-900 outline-none" value={header.defThickness} onChange={e => setHeader({...header, defThickness: e.target.value})} />
+                            <div className="flex gap-2 no-print">
+                                <button onClick={downloadExcel} className="bg-green-700 text-white px-4 py-2 rounded font-bold uppercase text-[10px]">Excel</button>
+                                <button onClick={() => window.print()} className="bg-blue-800 text-white px-4 py-2 rounded font-bold uppercase text-[10px]">Print PDF</button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            {['marker', 'container', 'factory', 'colour'].map(key => (
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                            {['marker', 'supervisor', 'container', 'factory', 'colour', 'defThickness'].map(key => (
                                 <div key={key} className="border-b">
-                                    <label className="block text-[8px] uppercase font-bold text-slate-400">{key}</label>
+                                    <label className="block text-[8px] uppercase font-bold text-slate-400">{key === 'defThickness' ? 'Def. Thick (cm)' : key}</label>
                                     <input className="w-full font-bold outline-none text-xs py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} />
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 border-l-8 border-blue-600 shadow-2xl">
+                    {/* INPUT FORM */}
+                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 shadow-2xl border-l-8 border-blue-600">
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                             <div className="md:col-span-2 grid grid-cols-2 gap-4">
                                 <div><label className="text-[9px] text-slate-500 uppercase font-black">Gross (L x W)</label>
-                                    <div className="flex gap-1">
+                                    <div className="flex gap-1 mt-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded font-black" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-black" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
                                     </div>
                                 </div>
                                 <div><label className="text-[9px] text-green-500 uppercase font-black">Net (L x W)</label>
-                                    <div className="flex gap-1">
+                                    <div className="flex gap-1 mt-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                     </div>
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[9px] text-orange-400 uppercase font-black">Slab Thick (cm)</label>
+                                <label className="text-[9px] text-orange-400 uppercase font-black">Photo</label>
+                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} className="block w-full text-[10px] text-slate-400 mt-1" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] text-slate-500 uppercase font-black">Thick (cm)</label>
                                 <input type="number" placeholder={header.defThickness} className="w-full p-2 text-black rounded font-bold mt-1" value={current.thick} onChange={e => setCurrent({...current, thick: e.target.value})} />
                             </div>
-                            <button onClick={addOrUpdateSlab} className="bg-blue-600 font-black py-3 rounded uppercase text-sm shadow-lg hover:bg-blue-500 transition-all">
+                            <button onClick={addOrUpdateSlab} className="bg-blue-600 font-black py-3 rounded uppercase text-sm hover:bg-blue-500 shadow-lg">
                                 {editingId ? 'Update' : 'Add Slab'}
                             </button>
                         </div>
                     </div>
 
-                    <div className="bg-white table-outline overflow-hidden mb-4">
-                        <div className="no-print bg-slate-100 p-3 border-b flex justify-between gap-4">
-                            <input type="text" placeholder="🔍 Search Slab ID..." className="flex-1 p-2 rounded text-sm border outline-none" onChange={e => setSearchTerm(e.target.value)} />
-                            <div className="flex gap-1">
-                                {['all', 'small', 'std', 'jumbo'].map(f => (
-                                    <button key={f} onClick={() => setLengthFilter(f)} className={`px-3 py-1 rounded text-[10px] font-bold uppercase border ${lengthFilter === f ? 'filter-active' : 'bg-white'}`}>{f}</button>
-                                ))}
-                            </div>
+                    {/* TABLE */}
+                    <div className="bg-white table-outline overflow-hidden rounded-sm mb-6 shadow-sm">
+                        <div className="no-print p-3 bg-slate-50 border-b">
+                            <input type="text" placeholder="🔍 Search Slab ID (e.g. 05)..." className="w-full p-2 rounded border text-sm" onChange={e => setSearchTerm(e.target.value)} />
                         </div>
                         <table className="w-full border-collapse">
-                            <thead className="bg-slate-900 text-white uppercase text-[9px]">
+                            <thead className="bg-slate-900 text-white uppercase text-[9px] tracking-widest">
                                 <tr>
                                     <th className="p-3 text-left">Slab No</th>
-                                    <th className="p-3 text-center">Dimensions</th>
-                                    <th className="p-3 text-center">Thick</th>
+                                    <th className="p-3 text-center">Photo</th>
                                     <th className="p-3 text-center">Net Area</th>
-                                    <th className="p-3 text-center">Est. Weight</th>
+                                    <th className="p-3 text-center">Weight</th>
                                     <th className="p-3 text-right no-print">Manage</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200 font-medium">
+                            <tbody className="divide-y divide-slate-200">
                                 {filteredEntries.map((e) => (
                                     <tr key={e.id} className="hover:bg-blue-50/50">
-                                        <td className="p-3 font-black text-blue-900">{e.slabNo}</td>
-                                        <td className="p-3 text-center text-xs">{e.gL} x {e.gW}</td>
-                                        <td className="p-3 text-center text-xs text-orange-600">{e.thick}cm</td>
-                                        <td className="p-3 text-center text-xs font-bold text-green-700">{e.nSqm} m²</td>
-                                        <td className="p-3 text-center text-xs italic">{e.weight} kg</td>
+                                        <td className="p-3 font-black text-blue-900">
+                                            {e.slabNo} <br/>
+                                            <span className="text-[9px] text-slate-400 font-normal">{e.gL}x{e.gW} @ {e.thick}cm</span>
+                                        </td>
+                                        <td className="p-2 text-center">
+                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover border rounded print-photo" /> : '-'}
+                                        </td>
+                                        <td className="p-3 text-center font-bold text-green-700">{e.nSqm} m²</td>
+                                        <td className="p-3 text-center text-xs font-mono">{e.weight} kg</td>
                                         <td className="p-3 text-right no-print">
-                                            <button onClick={() => { setEditingId(e.id); setCurrent({ ...e }); window.scrollTo(0,0); }} className="p-1 bg-blue-100 rounded mr-2 text-[10px]">EDIT</button>
+                                            <button onClick={() => {setEditingId(e.id); setCurrent({...e}); window.scrollTo(0,0);}} className="text-[10px] font-bold text-blue-600 mr-3">EDIT</button>
                                             <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400">✕</button>
                                         </td>
                                     </tr>
@@ -183,15 +196,30 @@
                         </table>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white border-2 border-black p-4"><p className="text-[10px] font-bold text-slate-400 uppercase">Net Area</p><p className="text-2xl font-black text-green-700">{totals.n} m²</p></div>
-                        <div className="bg-white border-2 border-black p-4"><p className="text-[10px] font-bold text-slate-400 uppercase">Gross Area</p><p className="text-2xl font-black text-slate-800">{totals.g} m²</p></div>
-                        <div className="bg-blue-900 text-white p-4 border-2 border-black shadow-xl"><p className="text-[10px] font-bold text-blue-300 uppercase">Est. Weight</p><p className="text-2xl font-black text-green-400">{totals.mt} MT</p></div>
+                    {/* FOOTER & SIGNATURE */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-blue-900 text-white p-6 border-2 border-black shadow-xl">
+                            <div className="flex justify-between mb-2 opacity-70 uppercase text-[10px] font-bold">
+                                <span>Total Slab Count</span>
+                                <span>{entries.length} Slabs</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-blue-300 uppercase text-[10px] font-bold">Total Net Payload</span>
+                                <span className="text-3xl font-black text-green-400">{totals.n} m² / {totals.mt} MT</span>
+                            </div>
+                        </div>
+                        <div className="border-2 border-black p-6 flex flex-col justify-end bg-white relative overflow-hidden">
+                             <div className="absolute top-2 left-2 text-[8px] font-bold uppercase text-slate-300">Authorized Signature</div>
+                             <div className="mt-8 border-b-2 border-black w-full italic font-serif text-center py-2 text-xl">
+                                {header.supervisor || "_________________"}
+                             </div>
+                             <div className="text-center text-[10px] font-bold uppercase mt-2">Supervisor Checked</div>
+                        </div>
                     </div>
-                    
-                    <div className="mt-6 flex gap-4 no-print">
-                        <button onClick={() => { if(confirm("Clear All?")) { localStorage.clear(); location.reload(); } }} className="text-xs text-red-500 font-bold uppercase underline">Clear All</button>
-                        <button onClick={() => window.print()} className="ml-auto bg-black text-white px-8 py-3 rounded font-black uppercase text-sm">Download Report</button>
+
+                    <div className="mt-8 flex justify-between no-print border-t pt-4">
+                        <button onClick={() => {if(confirm("Wipe all data?")){localStorage.clear(); location.reload();}}} className="text-xs font-bold text-red-500 uppercase underline">Reset System</button>
+                        <p className="text-[10px] font-bold text-slate-400">KUIPER DIGITAL INSPECTION SYSTEM V6.0</p>
                     </div>
                 </div>
             );
