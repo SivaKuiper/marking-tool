@@ -13,23 +13,23 @@
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
             table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #000 !important; padding: 4px; font-size: 9px; }
-            .print-photo { width: 70px; height: 70px; object-fit: cover; }
+            th, td { border: 1px solid #000 !important; padding: 4px; font-size: 8px; }
+            .print-photo { width: 65px; height: 65px; object-fit: cover; }
         }
         .table-outline { border: 2px solid #000; }
+        .sticky-header { position: sticky; top: 0; background: white; z-index: 10; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-900">
+<body class="bg-slate-100 text-slate-900 font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useMemo } = React;
 
         function App() {
-            const [header, setHeader] = useState({
-                marker: '', supervisor: '', container: '', factory: '', dest: '', colour: ''
-            });
+            const [header, setHeader] = useState({ marker: '', supervisor: '', container: '', factory: '', dest: '', colour: '' });
             const [entries, setEntries] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
             const [current, setCurrent] = useState({ gL: '', gW: '', nL: '', nW: '', photo: null });
 
             const handlePhoto = (e) => {
@@ -43,140 +43,181 @@
 
             const addSlab = () => {
                 if (!current.gL || !current.gW) return alert("Please enter Gross Dimensions");
-                
                 const now = new Date();
                 const timestamp = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const gSqm = (current.gL * current.gW) / 10000;
+                const nSqm = (current.nL * current.nW) / 10000;
+                const diff = gSqm - nSqm;
+                const allowPct = gSqm > 0 ? (diff / gSqm) * 100 : 0;
 
                 const newSlab = {
                     ...current,
                     id: Date.now(),
                     slabNo: `KEIPL/${entries.length + 1}`,
-                    gSqm: ((current.gL * current.gW) / 10000).toFixed(3),
-                    nSqm: ((current.nL * current.nW) / 10000).toFixed(3),
+                    gSqm: gSqm.toFixed(3),
+                    nSqm: nSqm.toFixed(3),
+                    diff: diff.toFixed(3),
+                    pct: allowPct.toFixed(1),
                     time: timestamp
                 };
-                setEntries([...entries, newSlab]);
+                setEntries([newSlab, ...entries]);
                 setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });
                 document.getElementById('file-upload').value = "";
             };
 
-            const totals = useMemo(() => ({
-                g: entries.reduce((s, e) => s + parseFloat(e.gSqm), 0).toFixed(3),
-                n: entries.reduce((s, e) => s + parseFloat(e.nSqm), 0).toFixed(3)
-            }), [entries]);
+            const resetData = () => {
+                if (window.confirm("WARNING: This will permanently delete all 250+ slabs in this list. Have you downloaded your Excel/PDF yet?")) {
+                    setEntries([]);
+                    setSearchTerm('');
+                    setHeader({ marker: '', supervisor: '', container: '', factory: '', dest: '', colour: '' });
+                }
+            };
+
+            const filteredEntries = useMemo(() => {
+                return entries.filter(e => 
+                    e.slabNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    e.gL.toString().includes(searchTerm) ||
+                    e.gW.toString().includes(searchTerm)
+                );
+            }, [entries, searchTerm]);
+
+            const totals = useMemo(() => {
+                const g = entries.reduce((s, e) => s + parseFloat(e.gSqm), 0);
+                const n = entries.reduce((s, e) => s + parseFloat(e.nSqm), 0);
+                const d = g - n;
+                const p = g > 0 ? (d / g) * 100 : 0;
+                return { g: g.toFixed(3), n: n.toFixed(3), d: d.toFixed(3), p: p.toFixed(1) };
+            }, [entries]);
+
+            const downloadExcel = () => {
+                let csv = `KEIPL INSPECTION REPORT\nContainer,${header.container},Marker,${header.marker}\n\n`;
+                csv += `S.No,Slab ID,Gross LxW,Gross SQM,Net LxW,Net SQM,Allowance,Allowance %,Time\n`;
+                entries.forEach((e, i) => {
+                    csv += `${entries.length - i},${e.slabNo},${e.gL}x${e.gW},${e.gSqm},${e.nL}x${e.nW},${e.nSqm},${e.diff},${e.pct}%,${e.time}\n`;
+                });
+                csv += `\nGRAND TOTALS,,,${totals.g},,${totals.n},${totals.d},${totals.p}%\n`;
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${header.container || 'Report'}.csv`;
+                a.click();
+            };
 
             return (
                 <div className="max-w-6xl mx-auto p-4 md:p-8 print:p-0">
-                    {/* TOP HEADER SECTION */}
-                    <div className="bg-white border-2 border-black p-6 mb-4 rounded-none shadow-sm">
-                        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
+                    {/* TOOLBAR */}
+                    <div className="bg-white border-2 border-black p-4 mb-4 shadow-sm">
+                        <div className="flex flex-wrap justify-between items-center border-b border-black pb-2 mb-4 gap-2">
                             <div>
-                                <h1 className="text-2xl font-black uppercase">KEIPL Inspection Report</h1>
-                                <p className="text-xs font-bold text-slate-500 tracking-widest">Slab Level Measurement Data</p>
+                                <h1 className="text-xl font-black uppercase">KEIPL Container Packing List</h1>
+                                <p className="text-[10px] text-slate-500 font-bold">REPORT DATE: {new Date().toLocaleDateString()}</p>
                             </div>
-                            <button onClick={() => window.print()} className="no-print bg-blue-600 text-white px-6 py-2 rounded font-bold shadow-lg">PRINT PDF</button>
+                            <div className="flex flex-wrap gap-2 no-print">
+                                <button onClick={resetData} className="bg-red-100 text-red-700 px-3 py-1 rounded text-xs font-bold uppercase border border-red-200">Reset All</button>
+                                <button onClick={downloadExcel} className="bg-green-700 text-white px-3 py-1 rounded text-xs font-bold uppercase shadow-sm">Excel</button>
+                                <button onClick={() => window.print()} className="bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold uppercase shadow-sm">PDF</button>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-12">
-                            {[ ['Marker Name', 'marker'], ['Supervisor', 'supervisor'], ['Container No', 'container'], ['Factory Name', 'factory'], ['Destination', 'dest'], ['Colour', 'colour'] ].map(([label, key]) => (
-                                <div key={key} className="border-b border-slate-300">
-                                    <label className="block text-[10px] uppercase font-bold text-slate-500">{label}</label>
-                                    <input className="w-full font-bold outline-none bg-transparent py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} placeholder="..." />
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                            {['marker', 'supervisor', 'container', 'factory', 'dest', 'colour'].map(key => (
+                                <div key={key} className="border-b border-slate-100">
+                                    <label className="block text-[8px] uppercase font-bold text-slate-400">{key}</label>
+                                    <input className="w-full font-bold outline-none text-xs capitalize bg-transparent" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} />
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     {/* ENTRY FORM */}
-                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 border-l-8 border-blue-500 shadow-xl">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="no-print bg-slate-800 text-white p-6 rounded-xl mb-6 shadow-xl border-t-4 border-blue-500">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div className="md:col-span-2 grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Gross (L x W)</label>
+                                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Gross (L x W)</label>
                                     <div className="flex gap-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded font-bold" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-bold" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] text-green-400 uppercase font-bold mb-1">Net (L x W)</label>
+                                    <label className="block text-[10px] uppercase font-bold text-green-400 mb-1">Net (L x W)</label>
                                     <div className="flex gap-1">
                                         <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
                                         <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="space-y-2">
-                                <label className="block text-[10px] text-blue-400 uppercase font-bold">Step 1: Camera or Gallery</label>
-                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} 
-                                    className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" 
-                                />
-                                {current.photo && <div className="text-[10px] text-green-400 font-bold flex items-center gap-1">✓ Photo Selected <img src={current.photo} className="h-6 w-6 rounded border border-white" /></div>}
+                            <div>
+                                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 flex justify-between">
+                                    <span>Slab Image</span>
+                                    {current.photo && <span className="text-green-400 font-black">READY ✓</span>}
+                                </label>
+                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} className="text-[10px] w-full" />
                             </div>
-
-                            <div className="flex items-end">
-                                <button onClick={addSlab} className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-lg uppercase tracking-widest transition-all shadow-lg">
-                                    Step 2: Add Slab
-                                </button>
-                            </div>
+                            <button onClick={addSlab} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded uppercase text-sm active:scale-95 transition-transform">Add Slab {entries.length + 1}</button>
                         </div>
                     </div>
 
-                    {/* DATA TABLE */}
+                    {/* SEARCH BAR */}
+                    <div className="no-print mb-4 flex items-center bg-white border border-slate-300 rounded-lg px-3 py-2 shadow-inner sticky top-2 z-20">
+                        <span className="mr-2 opacity-50 text-sm">SEARCH:</span>
+                        <input 
+                            type="text" 
+                            placeholder="Find Slab ID or Dimension..." 
+                            className="w-full outline-none text-sm font-semibold"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    {/* TABLE */}
                     <div className="bg-white table-outline overflow-hidden shadow-sm">
                         <table className="w-full border-collapse">
-                            <thead className="bg-slate-100 border-b-2 border-black">
-                                <tr>
-                                    <th className="p-2 text-left w-10 text-[8px]">S.No</th>
-                                    <th className="p-2 text-left text-[10px]">Slab ID</th>
-                                    <th className="p-2 text-center text-[10px]">Photo</th>
-                                    <th className="p-2 text-center text-[10px]">Gross (cm)</th>
-                                    <th className="p-2 text-center text-[10px] bg-blue-50">Gross SQM</th>
-                                    <th className="p-2 text-center text-[10px]">Net (cm)</th>
-                                    <th className="p-2 text-center text-[10px] bg-green-50">Net SQM</th>
-                                    <th className="p-2 text-right text-[8px]">Date/Time</th>
-                                    <th className="p-2 text-center no-print text-[10px]">Action</th>
+                            <thead className="bg-slate-50 border-b-2 border-black no-print">
+                                <tr className="text-[10px] uppercase">
+                                    <th className="p-2 text-left">Slab ID</th>
+                                    <th className="p-2 text-center">Photo</th>
+                                    <th className="p-2 text-center">Gross SQM</th>
+                                    <th className="p-2 text-center">Net SQM</th>
+                                    <th className="p-2 text-center text-red-700 italic">Loss</th>
+                                    <th className="p-2 text-right">Time</th>
+                                    <th className="p-2 text-center">X</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-300">
-                                {entries.map((e, i) => (
-                                    <tr key={e.id} className="print:break-inside-avoid">
-                                        <td className="p-2 text-slate-400 text-[9px]">{i + 1}</td>
-                                        <td className="p-2 font-black text-xs">{e.slabNo}</td>
-                                        <td className="p-2 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-16 w-16 mx-auto object-cover border border-black print-photo" /> : <span className="text-[7px] text-slate-300 uppercase">N/A</span>}
+                            <tbody className="divide-y divide-slate-200">
+                                {filteredEntries.map((e, i) => (
+                                    <tr key={e.id} className="print:break-inside-avoid odd:bg-white even:bg-slate-50/50">
+                                        <td className="p-2">
+                                            <div className="font-black text-xs">{e.slabNo}</div>
+                                            <div className="text-[9px] text-slate-400 font-mono">{e.gL}x{e.gW}</div>
                                         </td>
-                                        <td className="p-2 text-center text-xs">{e.gL}×{e.gW}</td>
-                                        <td className="p-2 text-center font-bold text-xs bg-blue-50/30">{e.gSqm}</td>
-                                        <td className="p-2 text-center text-xs">{e.nL}×{e.nW}</td>
-                                        <td className="p-2 text-center font-bold text-xs text-green-700 bg-green-50/30">{e.nSqm}</td>
-                                        <td className="p-2 text-right text-[7px] font-mono text-slate-500 uppercase">{e.time}</td>
+                                        <td className="p-1 text-center">
+                                            {e.photo ? <img src={e.photo} className="h-16 w-16 mx-auto object-cover border border-slate-200 print-photo rounded" /> : <span className="text-[8px] text-slate-300">-</span>}
+                                        </td>
+                                        <td className="p-2 text-center font-bold text-xs">{e.gSqm}</td>
+                                        <td className="p-2 text-center font-bold text-xs text-green-700">{e.nSqm}</td>
+                                        <td className="p-2 text-center">
+                                            <div className="text-[10px] font-bold text-red-600">-{e.diff}</div>
+                                            <div className="text-[8px] text-red-400">{e.pct}%</div>
+                                        </td>
+                                        <td className="p-2 text-right text-[7px] font-mono text-slate-400 uppercase">{e.time}</td>
                                         <td className="p-2 text-center no-print">
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-500 font-bold text-[10px] hover:bg-red-50 p-1 rounded">Delete</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-slate-300 hover:text-red-500 font-bold text-lg leading-none">×</button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot className="border-t-2 border-black bg-slate-50 font-black">
+                            <tfoot className="border-t-2 border-black bg-slate-100 font-black">
                                 <tr className="text-[10px]">
-                                    <td colSpan="4" className="p-4 text-right uppercase tracking-tighter">Grand Total SQM:</td>
-                                    <td className="p-4 text-center border-x border-black text-blue-800 text-xs">{totals.g}</td>
-                                    <td></td>
-                                    <td className="p-4 text-center border-x border-black text-green-800 text-xs">{totals.n}</td>
+                                    <td colSpan="2" className="p-3 text-right uppercase tracking-tighter">Total ({entries.length} Slabs):</td>
+                                    <td className="p-3 text-center border-x border-black/10">{totals.g}</td>
+                                    <td className="p-3 text-center border-x border-black/10 text-green-800">{totals.n}</td>
+                                    <td className="p-3 text-center border-x border-black/10 text-red-700">-{totals.d} <span className="block text-[8px] opacity-60">({totals.p}%)</span></td>
                                     <td colSpan="2"></td>
                                 </tr>
                             </tfoot>
                         </table>
-                    </div>
-                    
-                    {/* SIGNATURE SECTION (For Printed Reports) */}
-                    <div className="mt-12 hidden print:grid grid-cols-2 gap-20">
-                        <div className="border-t border-black pt-2 text-center">
-                            <p className="text-[10px] font-bold uppercase">Supervisor Signature</p>
-                        </div>
-                        <div className="border-t border-black pt-2 text-center">
-                            <p className="text-[10px] font-bold uppercase">Factory Representative</p>
-                        </div>
                     </div>
                 </div>
             );
