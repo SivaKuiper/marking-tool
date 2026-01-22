@@ -12,13 +12,11 @@
         @media print {
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
-            .print-container { width: 100%; border: none; }
             table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #000 !important; padding: 6px; font-size: 11px; }
-            .page-break { page-break-after: always; }
+            th, td { border: 1px solid #000 !important; padding: 6px; font-size: 10px; }
+            .print-photo { width: 80px; height: 80px; object-fit: cover; }
         }
         .table-outline { border: 2px solid #000; }
-        input::placeholder { color: #94a3b8; font-weight: normal; }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900">
@@ -44,7 +42,7 @@
             };
 
             const addSlab = () => {
-                if (!current.gL || !current.gW) return alert("Enter Gross Dimensions");
+                if (!current.gL || !current.gW) return alert("Please enter Gross Dimensions");
                 
                 const now = new Date();
                 const timestamp = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -59,6 +57,8 @@
                 };
                 setEntries([...entries, newSlab]);
                 setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });
+                // Reset file input manually
+                document.getElementById('file-upload').value = "";
             };
 
             const totals = useMemo(() => ({
@@ -73,47 +73,53 @@
                         <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
                             <div>
                                 <h1 className="text-2xl font-black uppercase">KEIPL Inspection Report</h1>
-                                <p className="text-xs font-bold text-slate-500">Container Loading & Measurement Sheet</p>
+                                <p className="text-xs font-bold text-slate-500 tracking-widest">Slab Level Measurement Data</p>
                             </div>
-                            <div className="text-right no-print">
-                                <button onClick={() => window.print()} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">PRINT REPORT</button>
-                            </div>
+                            <button onClick={() => window.print()} className="no-print bg-blue-600 text-white px-6 py-2 rounded font-bold shadow-lg">PRINT PDF</button>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-12">
                             {[ ['Marker Name', 'marker'], ['Supervisor', 'supervisor'], ['Container No', 'container'], ['Factory Name', 'factory'], ['Destination', 'dest'], ['Colour', 'colour'] ].map(([label, key]) => (
                                 <div key={key} className="border-b border-slate-300">
                                     <label className="block text-[10px] uppercase font-bold text-slate-500">{label}</label>
-                                    <input className="w-full font-bold outline-none bg-transparent py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} placeholder={`Enter ${label}`} />
+                                    <input className="w-full font-bold outline-none bg-transparent py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} placeholder="..." />
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     {/* ENTRY FORM */}
-                    <div className="no-print bg-slate-900 text-white p-6 rounded-lg mb-6 border-l-4 border-blue-500">
-                        <h2 className="text-sm font-bold mb-4 text-blue-400 uppercase">New Entry: {`KEIPL/${entries.length + 1}`}</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-end">
+                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 border-l-8 border-blue-500 shadow-xl">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-slate-400 uppercase font-bold">Gross (L x W)</label>
+                                <div>
+                                    <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Gross (L x W)</label>
                                     <div className="flex gap-1">
-                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
-                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
+                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded font-bold" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
+                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-bold" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
                                     </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-green-400 uppercase font-bold">Net (L x W)</label>
+                                <div>
+                                    <label className="block text-[10px] text-green-400 uppercase font-bold mb-1">Net (L x W)</label>
                                     <div className="flex gap-1">
-                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
+                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50 font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-[10px] text-slate-400 uppercase font-bold">Upload Photo</label>
-                                <input type="file" accept="image/*" onChange={handlePhoto} className="text-xs" />
+
+                            <div className="space-y-2">
+                                <label className="block text-[10px] text-blue-400 uppercase font-bold">Step 1: Capture Photo</label>
+                                <input id="file-upload" type="file" accept="image/*" capture="environment" onChange={handlePhoto} 
+                                    className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" 
+                                />
+                                {current.photo && <div className="text-[10px] text-green-400 font-bold">✓ Photo Attached</div>}
                             </div>
-                            <button onClick={addSlab} className="md:col-span-2 bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 rounded tracking-widest transition-all">ADD SLAB TO LIST</button>
+
+                            <div className="flex items-end">
+                                <button onClick={addSlab} className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-lg uppercase tracking-widest transition-all shadow-lg">
+                                    Step 2: Add Slab
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -122,49 +128,46 @@
                         <table className="w-full border-collapse">
                             <thead className="bg-slate-100 border-b-2 border-black">
                                 <tr>
-                                    <th className="p-2 text-left w-16">S.No</th>
-                                    <th className="p-2 text-left">Slab Number</th>
-                                    <th className="p-2 text-center">Photo</th>
-                                    <th className="p-2 text-center">Gross Dimensions</th>
-                                    <th className="p-2 text-center bg-blue-50">Gross SQM</th>
-                                    <th className="p-2 text-center">Net Dimensions</th>
-                                    <th className="p-2 text-center bg-green-50">Net SQM</th>
-                                    <th className="p-2 text-right">Inspection Date/Time</th>
-                                    <th className="p-2 text-center no-print">Action</th>
+                                    <th className="p-2 text-left w-12 text-[9px]">S.No</th>
+                                    <th className="p-2 text-left text-[11px]">Slab ID</th>
+                                    <th className="p-2 text-center text-[11px]">Photo</th>
+                                    <th className="p-2 text-center text-[11px]">Gross (cm)</th>
+                                    <th className="p-2 text-center text-[11px] bg-blue-50">Gross SQM</th>
+                                    <th className="p-2 text-center text-[11px]">Net (cm)</th>
+                                    <th className="p-2 text-center text-[11px] bg-green-50">Net SQM</th>
+                                    <th className="p-2 text-right text-[9px]">Inspec. Time</th>
+                                    <th className="p-2 text-center no-print text-[11px]">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-300">
                                 {entries.map((e, i) => (
                                     <tr key={e.id} className="print:break-inside-avoid">
-                                        <td className="p-2 text-slate-500">{i + 1}</td>
-                                        <td className="p-2 font-black">{e.slabNo}</td>
+                                        <td className="p-2 text-slate-400 text-[10px]">{i + 1}</td>
+                                        <td className="p-2 font-black text-sm">{e.slabNo}</td>
                                         <td className="p-2 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover border border-black" /> : <span className="text-[8px] text-slate-400 uppercase">No Photo</span>}
+                                            {e.photo ? <img src={e.photo} className="h-20 w-20 mx-auto object-cover border border-black print-photo" /> : <span className="text-[8px] text-slate-300">N/A</span>}
                                         </td>
-                                        <td className="p-2 text-center">{e.gL} × {e.gW} cm</td>
-                                        <td className="p-2 text-center font-bold bg-blue-50/50">{e.gSqm}</td>
-                                        <td className="p-2 text-center">{e.nL} × {e.nW} cm</td>
-                                        <td className="p-2 text-center font-bold text-green-700 bg-green-50/50">{e.nSqm}</td>
-                                        <td className="p-2 text-right text-[10px] font-mono text-slate-500 uppercase">{e.time}</td>
+                                        <td className="p-2 text-center">{e.gL}×{e.gW}</td>
+                                        <td className="p-2 text-center font-bold bg-blue-50/30">{e.gSqm}</td>
+                                        <td className="p-2 text-center">{e.nL}×{e.nW}</td>
+                                        <td className="p-2 text-center font-bold text-green-700 bg-green-50/30">{e.nSqm}</td>
+                                        <td className="p-2 text-right text-[8px] font-mono text-slate-500 uppercase">{e.time}</td>
                                         <td className="p-2 text-center no-print">
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-500 hover:bg-red-50 p-1 rounded">Delete</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-500 font-bold text-xs p-1">Delete</button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                             <tfoot className="border-t-2 border-black bg-slate-50 font-black">
-                                <tr className="text-sm">
-                                    <td colSpan="4" className="p-4 text-right uppercase tracking-widest">Grand Total:</td>
-                                    <td className="p-4 text-center border-l border-r border-black text-blue-800">{totals.g}</td>
+                                <tr className="text-xs">
+                                    <td colSpan="4" className="p-4 text-right uppercase tracking-tighter">Grand Total SQM:</td>
+                                    <td className="p-4 text-center border-x border-black text-blue-800 text-sm">{totals.g}</td>
                                     <td></td>
-                                    <td className="p-4 text-center border-l border-r border-black text-green-800">{totals.n}</td>
+                                    <td className="p-4 text-center border-x border-black text-green-800 text-sm">{totals.n}</td>
                                     <td colSpan="2"></td>
                                 </tr>
                             </tfoot>
                         </table>
-                    </div>
-                    <div className="mt-4 text-[10px] text-slate-400 text-center uppercase tracking-widest">
-                        End of Inspection Report - Generated by KEIPL Container Tool
                     </div>
                 </div>
             );
