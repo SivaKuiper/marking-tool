@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEIPL - Professional Inspection Suite</title>
+    <title>KEIPL - Global Inspection V9.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,13 +13,14 @@
             .no-print, .hide-on-report { display: none !important; }
             body { background: white; padding: 0; margin: 0; }
             .report-box { border: 1px solid #000 !important; box-shadow: none !important; margin-bottom: 10px !important; }
-            th, td { border: 1px solid #e2e8f0 !important; padding: 4px; font-size: 9px !important; }
-            .print-card { border: 1px solid #e2e8f0 !important; }
+            th, td { border: 1px solid #e2e8f0 !important; padding: 4px; font-size: 8px !important; }
+            .print-photo { width: 70px !important; height: 50px !important; object-fit: cover; border: 0.5px solid #ccc; }
         }
-        .excel-header { background-color: #1e3a8a; color: white; font-weight: bold; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="bg-slate-100 text-slate-900 font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -27,7 +28,7 @@
 
         function App() {
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('keipl_h_v87');
+                const saved = localStorage.getItem('keipl_h_v90');
                 return saved ? JSON.parse(saved) : { 
                     customer: '', container: '', factory: '', destination: '', 
                     colour: '', marker: '', supervisor: '', defThick: '2', allowance: '0',
@@ -36,7 +37,7 @@
             });
 
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('keipl_e_v87');
+                const saved = localStorage.getItem('keipl_e_v90');
                 return saved ? JSON.parse(saved) : [];
             });
 
@@ -44,9 +45,10 @@
             const [bulkText, setBulkText] = useState('');
             const [editingId, setEditingId] = useState(null);
             const [filterRange, setFilterRange] = useState('All');
+            const [showPhotosInPrint, setShowPhotosInPrint] = useState(true);
 
-            useEffect(() => { localStorage.setItem('keipl_h_v87', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('keipl_e_v87', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('keipl_h_v90', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_e_v90', JSON.stringify(entries)); }, [entries]);
 
             const handleGrossInput = (field, val) => {
                 const num = parseFloat(val) || 0;
@@ -77,6 +79,27 @@
                 setCurrent({ gL:'', gW:'', nL:'', nW:'', photo: null });
             };
 
+            const processBulk = () => {
+                const rows = bulkText.trim().split('\n');
+                const newEnts = rows.map((row, i) => {
+                    const cols = row.split(/\t|,/);
+                    const gl = cols[0]; const gw = cols[1];
+                    if (!gl || isNaN(gl)) return null;
+                    const nl = cols[2] || (gl - header.allowance);
+                    const nw = cols[3] || (gw - header.allowance);
+                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
+                    const nS = (parseFloat(nl)*parseFloat(nw))/10000;
+                    return {
+                        id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
+                        gL:gl, gW:gw, nL:nl, nW:nw, gSqm: gS.toFixed(3), nSqm: nS.toFixed(3),
+                        wt: (gS * (header.defThick/100) * 2850).toFixed(0), absAll: (gS-nS).toFixed(3), 
+                        allType: header.allowance, thick: header.defThick
+                    };
+                }).filter(x => x);
+                setEntries([...newEnts, ...entries]);
+                setBulkText('');
+            };
+
             const stats = useMemo(() => {
                 const totalG = entries.reduce((a, b) => a + parseFloat(b.gSqm), 0);
                 const totalN = entries.reduce((a, b) => a + parseFloat(b.nSqm), 0);
@@ -97,40 +120,6 @@
                 };
             }, [entries]);
 
-            const exportToExcel = () => {
-                const table = document.getElementById("main-table").cloneNode(true);
-                // Remove the action column for Excel
-                table.querySelectorAll('.no-print').forEach(el => el.remove());
-                
-                const template = `
-                    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-                    <head><style>
-                        table { border-collapse: collapse; }
-                        th { background-color: #1e3a8a; color: #ffffff; border: 1px solid #000; font-family: Arial; font-size: 12px; }
-                        td { border: 1px solid #ccc; text-align: center; font-family: Arial; font-size: 11px; }
-                        .title { font-size: 20px; font-weight: bold; color: #1e3a8a; }
-                    </style></head>
-                    <body>
-                        <table>
-                            <tr><td colspan="7" class="title">KUIPER EXPORTS & IMPORTS PVT LTD</td></tr>
-                            <tr><td colspan="7">PACKING LIST REPORT | Date: ${header.inspectDate}</td></tr>
-                            <tr><td><b>Customer:</b></td><td colspan="2">${header.customer}</td><td><b>Container:</b></td><td colspan="3">${header.container}</td></tr>
-                            <tr><td><b>Invoice No:</b></td><td colspan="2">${header.invoiceNo}</td><td><b>Colour:</b></td><td colspan="3">${header.colour}</td></tr>
-                            <tr><td colspan="7"></td></tr>
-                        </table>
-                        ${table.outerHTML}
-                        <table>
-                            <tr><td colspan="4"></td><td><b>Total Net Area:</b></td><td><b>${stats.nArea} m²</b></td></tr>
-                            <tr><td colspan="4"></td><td><b>Total Weight:</b></td><td><b>${stats.mt} MT</b></td></tr>
-                        </table>
-                    </body></html>`;
-                const blob = new Blob([template], { type: "application/vnd.ms-excel" });
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = `KEIPL_PackingList_${header.container}.xls`;
-                a.click();
-            };
-
             const filteredEntries = entries.filter(e => {
                 const l = parseFloat(e.nL);
                 if (filterRange === '300+') return l >= 300;
@@ -141,135 +130,153 @@
             });
 
             return (
-                <div className="max-w-6xl mx-auto p-4 md:py-6">
-                    {/* BUTTONS */}
-                    <div className="flex justify-between items-center mb-4 no-print">
-                        <button onClick={() => {if(confirm("Wipe all data?")) {localStorage.clear(); location.reload();}}} className="bg-red-500 text-white px-4 py-2 rounded text-[10px] font-black uppercase">Reset</button>
+                <div className="max-w-7xl mx-auto p-4 md:py-6">
+                    {/* TOP ACTION BAR */}
+                    <div className="flex flex-wrap justify-between items-center gap-4 mb-6 no-print">
                         <div className="flex gap-2">
-                            <button onClick={exportToExcel} className="bg-green-700 text-white px-6 py-2 rounded text-[10px] font-black uppercase shadow-lg">Download Excel</button>
-                            <button onClick={() => window.print()} className="bg-blue-900 text-white px-6 py-2 rounded text-[10px] font-black uppercase shadow-lg">Print PDF</button>
+                             <button onClick={() => {if(confirm("Clear Slabs?")) setEntries([]);}} className="bg-white text-red-600 px-4 py-2 rounded-lg text-[10px] font-black uppercase border border-red-200 shadow-sm">Clear Table</button>
+                             <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border shadow-sm">
+                                <span className="text-[9px] font-black uppercase text-slate-500">Show Photos:</span>
+                                <input type="checkbox" checked={showPhotosInPrint} onChange={(e) => setShowPhotosInPrint(e.target.checked)} className="w-4 h-4" />
+                             </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => window.print()} className="bg-blue-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase shadow-lg border-b-4 border-blue-950">Print PDF Report</button>
                         </div>
                     </div>
 
-                    {/* HEADER */}
-                    <div className="bg-white p-8 border-t-[12px] border-blue-900 shadow-sm mb-4 report-box">
-                        <div className="flex justify-between items-start">
+                    {/* HEADER SECTION */}
+                    <div className="bg-white p-8 border-t-[12px] border-blue-900 shadow-md mb-6 report-box rounded-xl">
+                        <div className="flex justify-between items-start mb-8">
                             <div>
-                                <h1 className="text-4xl font-black text-blue-900 tracking-tighter leading-none">KUIPER</h1>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Exports & Imports Pvt Ltd</p>
+                                <h1 className="text-5xl font-black text-blue-900 tracking-tighter leading-none">KUIPER</h1>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] mt-2">Quality Inspection System</p>
                             </div>
-                            <div className="text-right flex flex-col gap-1">
-                                <div className="border-b"><label className="text-[8px] font-black text-slate-400 block uppercase">Inspection Date</label>
-                                <input type="date" className="font-bold text-xs outline-none bg-transparent" value={header.inspectDate} onChange={e => setHeader({...header, inspectDate: e.target.value})} /></div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase">Report: <span className="text-slate-900 ml-2">{header.reportNo}</span></p>
+                            <div className="text-right space-y-2">
+                                <div className="inline-block border-b-2 border-slate-100 p-1">
+                                    <label className="text-[9px] font-black text-slate-400 block uppercase">Insp. Date</label>
+                                    <input type="date" className="font-bold text-sm outline-none bg-transparent" value={header.inspectDate} onChange={e => setHeader({...header, inspectDate: e.target.value})} />
+                                </div>
+                                <p className="text-xs font-black text-blue-900 bg-blue-50 px-3 py-1 rounded">REF: {header.reportNo || 'NEW-REPORT'}</p>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                             {['customer', 'container', 'factory', 'destination', 'colour', 'marker', 'supervisor', 'defThick', 'reportNo', 'invoiceNo'].map(k => (
-                                <div key={k} className={`border-b ${k === 'factory' ? 'hide-on-report' : ''}`}>
-                                    <label className="block text-[8px] font-black text-slate-400 uppercase">{k}</label>
-                                    <input className="w-full font-bold text-xs py-1 outline-none uppercase bg-transparent" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
+                                <div key={k} className={`border-b-2 border-slate-50 pb-1 hover:border-blue-200 transition-colors ${k === 'factory' ? 'hide-on-report' : ''}`}>
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-tight mb-1">{k}</label>
+                                    <input className="w-full font-bold text-xs outline-none uppercase bg-transparent text-slate-800" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
                                 </div>
                             ))}
-                            <div className="border-b hide-on-report bg-blue-50/50 p-1">
-                                <label className="block text-[8px] font-black text-blue-600 uppercase italic">Auto Allowance Logic</label>
-                                <select className="w-full font-bold text-xs py-1 outline-none bg-transparent" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
-                                    <option value="0">0 cm</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option>
-                                </select>
-                            </div>
                         </div>
                     </div>
 
-                    {/* ANALYTICS */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                        <div onClick={() => setFilterRange('All')} className={`p-3 rounded border-2 print-card cursor-pointer ${filterRange === 'All' ? 'border-blue-600 bg-blue-50' : 'bg-white border-slate-100'}`}>
-                            <p className="text-[9px] font-black text-slate-400 uppercase">Total Slabs</p>
-                            <p className="text-2xl font-black text-blue-900">{entries.length}</p>
+                    {/* INPUTS ROW: BULK + MANUAL */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print mb-8">
+                        {/* RESTORED BULK PASTE */}
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-2">
+                             <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xs font-black uppercase text-slate-600 tracking-widest">Bulk Import Slabs</h3>
+                                <span className="text-[10px] text-slate-400 font-medium">Format: GL, GW, NL, NW</span>
+                             </div>
+                             <textarea 
+                                className="w-full h-32 p-4 text-xs font-mono border-2 border-dashed border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-slate-50 transition-all" 
+                                placeholder="Paste Excel data here (e.g. 320   180   318   178)..." 
+                                value={bulkText} 
+                                onChange={e => setBulkText(e.target.value)}
+                             ></textarea>
+                             <div className="mt-4 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <label className="text-[10px] font-black text-blue-600 uppercase">Apply Allw:</label>
+                                    <select className="font-bold text-xs bg-slate-100 p-2 rounded" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
+                                        <option value="0">None</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option>
+                                    </select>
+                                </div>
+                                <button onClick={processBulk} className="bg-slate-800 text-white px-10 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-black transition-all shadow-lg">Import Batch</button>
+                             </div>
+                        </div>
+
+                        {/* MANUAL ENTRY */}
+                        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border-t-8 border-blue-500">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest italic">Manual Entry</h3>
+                                <span className="bg-blue-600 text-[10px] px-2 py-1 rounded">Slab {entries.length + 1}</span>
+                            </div>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input type="number" placeholder="Gross L" className="p-3 rounded-lg text-black font-black w-full" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
+                                    <input type="number" placeholder="Gross W" className="p-3 rounded-lg text-black font-black w-full" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input type="number" placeholder="Net L" className="p-3 rounded-lg bg-green-50 text-black font-black w-full border-2 border-green-300" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                    <input type="number" placeholder="Net W" className="p-3 rounded-lg bg-green-50 text-black font-black w-full border-2 border-green-300" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input type="file" accept="image/*" className="hidden" id="file-up" onChange={(e) => {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => setCurrent(p => ({ ...p, photo: reader.result }));
+                                        reader.readAsDataURL(e.target.files[0]);
+                                    }} />
+                                    <label htmlFor="file-up" className="cursor-pointer bg-slate-700 hover:bg-slate-600 p-3 rounded-lg flex-1 text-center text-[10px] font-bold uppercase">
+                                        {current.photo ? "✓ Photo Added" : "📷 Add Photo"}
+                                    </label>
+                                    {current.photo && <button onClick={() => setCurrent(p => ({...p, photo:null}))} className="text-red-400 font-bold">✕</button>}
+                                </div>
+                            </div>
+                            <button onClick={addOrUpdate} className="bg-blue-600 mt-6 py-4 rounded-xl font-black uppercase text-sm w-full shadow-lg hover:bg-blue-500 transition-all">Save Slab</button>
+                        </div>
+                    </div>
+
+                    {/* SLAB ANALYTICS BAR */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                        <div onClick={() => setFilterRange('All')} className={`p-4 rounded-xl border-2 print-card cursor-pointer transition-all ${filterRange === 'All' ? 'border-blue-600 bg-blue-50 shadow-md' : 'bg-white border-transparent shadow-sm'}`}>
+                            <p className="text-[10px] font-black text-slate-400 uppercase">Total Slabs</p>
+                            <p className="text-3xl font-black text-blue-900 leading-none mt-1">{entries.length}</p>
                         </div>
                         {[{ label: '300+', key: 'over300' }, { label: '250+', key: 'over250' }, { label: '200+', key: 'over200' }, { label: 'Below 200', key: 'below200' }].map(f => (
-                            <div key={f.label} onClick={() => setFilterRange(f.label)} className={`p-3 rounded border-2 print-card cursor-pointer ${filterRange === f.label ? 'border-blue-600 bg-blue-50' : 'bg-white border-slate-100'}`}>
-                                <p className="text-[9px] font-black text-slate-400 uppercase">{f.label} cm</p>
-                                <p className="text-2xl font-black text-slate-800">{stats.cat[f.key]} <span className="text-[10px] text-slate-400">({stats.catPct[f.key]}%)</span></p>
+                            <div key={f.label} onClick={() => setFilterRange(f.label)} className={`p-4 rounded-xl border-2 print-card cursor-pointer transition-all ${filterRange === f.label ? 'border-blue-600 bg-blue-50 shadow-md' : 'bg-white border-transparent shadow-sm'}`}>
+                                <p className="text-[10px] font-black text-slate-400 uppercase">{f.label} cm</p>
+                                <p className="text-3xl font-black text-slate-800 leading-none mt-1">{stats.cat[f.key]}</p>
+                                <p className="text-[10px] font-bold text-blue-400 mt-2">{stats.catPct[f.key]}% Ratio</p>
                             </div>
                         ))}
                     </div>
 
-                    {/* BULK / MANUAL (HIDDEN ON PRINT) */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print mb-6">
-                        <div className="md:col-span-2 bg-white p-6 rounded-xl border border-slate-200">
-                             <textarea className="w-full h-32 p-3 text-xs font-mono border rounded outline-none bg-slate-50" placeholder="Paste: GL, GW, NL, NW" value={bulkText} onChange={e => setBulkText(e.target.value)}></textarea>
-                             <button onClick={() => {
-                                const rows = bulkText.trim().split('\n');
-                                const newEnts = rows.map((row, i) => {
-                                    const cols = row.split(/\t|,/);
-                                    const gl = cols[0]; const gw = cols[1];
-                                    if (!gl || isNaN(gl)) return null;
-                                    const nl = cols[2] || gl; const nw = cols[3] || gw;
-                                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
-                                    const nS = (parseFloat(nl)*parseFloat(nw))/10000;
-                                    return {
-                                        id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
-                                        gL:gl, gW:gw, nL:nl, nW:nw, gSqm: gS.toFixed(3), nSqm: nS.toFixed(3),
-                                        wt: (gS * (header.defThick/100) * 2850).toFixed(0), absAll: (gS-nS).toFixed(3), allType: 'Paste', thick: header.defThick
-                                    };
-                                }).filter(x => x);
-                                setEntries([...newEnts, ...entries]); setBulkText('');
-                             }} className="mt-2 bg-slate-800 text-white px-6 py-2 rounded text-[10px] font-black uppercase tracking-widest">Process Bulk</button>
-                        </div>
-
-                        <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl">
-                            <h3 className="text-[10px] font-black text-blue-400 uppercase mb-4 tracking-widest font-mono italic">Entry Mode: Slab {entries.length + 1}</h3>
-                            <div className="space-y-3">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <input type="number" placeholder="Gross L" className="p-2.5 rounded text-black font-bold outline-none" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
-                                    <input type="number" placeholder="Gross W" className="p-2.5 rounded text-black font-bold outline-none" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <input type="number" placeholder="Net L" className="p-2.5 rounded bg-green-50 text-black font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                    <input type="number" placeholder="Net W" className="p-2.5 rounded bg-green-50 text-black font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
-                                </div>
-                                <input type="file" accept="image/*" className="text-[10px] text-slate-500" onChange={(e) => {
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => setCurrent(p => ({ ...p, photo: reader.result }));
-                                    reader.readAsDataURL(e.target.files[0]);
-                                }} />
-                            </div>
-                            <button onClick={addOrUpdate} className="bg-blue-600 mt-4 py-3 rounded font-black uppercase text-xs w-full shadow-lg">Save Slab</button>
-                        </div>
-                    </div>
-
-                    {/* MAIN TABLE */}
-                    <div className="bg-white border report-box overflow-hidden rounded-lg">
-                        <table className="w-full text-center" id="main-table">
+                    {/* MAIN DATA TABLE */}
+                    <div className="bg-white border shadow-sm report-box overflow-hidden rounded-xl">
+                        <table className="w-full text-center border-collapse">
                             <thead>
-                                <tr className="bg-slate-800 text-white text-[9px] uppercase">
-                                    <th className="p-2 text-left">Slab No</th>
-                                    <th className="p-2 no-print">Photo</th>
-                                    <th className="p-2">Gross (L x W)</th>
-                                    <th className="p-2">Gross SQM</th>
-                                    <th className="p-2 bg-blue-900/50">Allow. (cm)</th>
-                                    <th className="p-2 bg-red-900/50">Allow. (m²)</th>
-                                    <th className="p-2 bg-green-800">Net Dim</th>
-                                    <th className="p-2 bg-blue-800">Net SQM</th>
-                                    <th className="p-2 no-print">Action</th>
+                                <tr className="bg-slate-800 text-white text-[9px] uppercase tracking-wider">
+                                    <th className="p-3 text-left">Slab No</th>
+                                    {showPhotosInPrint && <th className="p-3">Slab Visual</th>}
+                                    <th className="p-3">Gross (L x W)</th>
+                                    <th className="p-3">Gross m²</th>
+                                    <th className="p-3 bg-blue-900/50">Allow (cm)</th>
+                                    <th className="p-3 bg-red-900/50">Allow (m²)</th>
+                                    <th className="p-3 bg-green-800">Net Dim</th>
+                                    <th className="p-3 bg-blue-800">Net m²</th>
+                                    <th className="p-3 no-print">Action</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-slate-100">
                                 {filteredEntries.map(e => (
-                                    <tr key={e.id} className="text-xs">
-                                        <td className="p-2 text-left font-black text-blue-900 italic">{e.slabNo}</td>
-                                        <td className="p-1 no-print">
-                                            {e.photo ? <img src={e.photo} className="h-12 w-12 mx-auto object-cover rounded shadow-sm border" /> : '-'}
-                                        </td>
-                                        <td className="p-2 text-slate-500">{e.gL}x{e.gW}</td>
-                                        <td className="p-2 text-slate-500">{e.gSqm}</td>
-                                        <td className="p-2 font-bold text-blue-600">{e.allType || '0'} cm</td>
-                                        <td className="p-2 font-bold text-red-500">{e.absAll}</td>
-                                        <td className="p-2 font-black text-green-700">{e.nL}x{e.nW}</td>
-                                        <td className="p-2 font-black text-blue-900">{e.nSqm}</td>
-                                        <td className="p-2 no-print text-[10px]">
-                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold mr-2">Edit</button>
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400 underline">✕</button>
+                                    <tr key={e.id} className="text-[10px] hover:bg-slate-50 transition-colors">
+                                        <td className="p-3 text-left font-black text-blue-900 italic uppercase">{e.slabNo}</td>
+                                        {showPhotosInPrint && (
+                                            <td className="p-1">
+                                                {e.photo ? <img src={e.photo} className="print-photo mx-auto rounded shadow-sm border" /> : <span className="text-slate-300 text-[8px]">NONE</span>}
+                                            </td>
+                                        )}
+                                        <td className="p-3 text-slate-400 font-mono">{e.gL}x{e.gW}</td>
+                                        <td className="p-3 text-slate-400">{e.gSqm}</td>
+                                        <td className="p-3 font-bold text-blue-600">{e.allType} cm</td>
+                                        <td className="p-3 font-bold text-red-500 italic">{e.absAll}</td>
+                                        <td className="p-3 font-black text-green-700 font-mono">{e.nL}x{e.nW}</td>
+                                        <td className="p-3 font-black text-blue-900">{e.nSqm}</td>
+                                        <td className="p-3 no-print">
+                                            <div className="flex gap-2 justify-center">
+                                                <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold">Edit</button>
+                                                <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-300">✕</button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -277,30 +284,24 @@
                         </table>
                     </div>
 
-                    {/* FOOTER */}
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6 border-t-4 border-blue-900 pt-6 pb-12">
-                        <div className="bg-blue-900 text-white p-6 rounded shadow-xl flex justify-between items-center">
-                            <div><p className="text-[9px] font-black uppercase opacity-60">Total Area</p><p className="text-3xl font-black">{stats.nArea} m²</p></div>
-                            <div className="text-right"><p className="text-[9px] font-black uppercase opacity-60">Total Weight</p><p className="text-2xl font-black text-green-400">{stats.mt} MT</p></div>
+                    {/* FINAL SUMMARY DASHBOARD */}
+                    <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 border-t-8 border-blue-900 pt-8 pb-20">
+                        <div className="bg-blue-900 text-white p-8 rounded-3xl shadow-xl flex justify-between items-center border-r-8 border-green-500">
+                            <div><p className="text-[10px] font-black uppercase opacity-60 tracking-widest">Net Payable Area</p><p className="text-5xl font-black leading-none">{stats.nArea} <span className="text-sm font-normal">m²</span></p></div>
+                            <div className="text-right"><p className="text-[10px] font-black uppercase opacity-60 tracking-widest">Total Weight</p><p className="text-3xl font-black text-green-400">{stats.mt} <span className="text-sm font-normal">MT</span></p></div>
                         </div>
 
-                        <div className="bg-white p-6 rounded border-2 border-slate-100 shadow-sm">
-                            <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Deduction Analysis</p>
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <span className="text-[9px] font-black text-slate-500 uppercase italic">Absolute Allowance:</span>
-                                <span className="text-sm font-black text-red-600">{stats.absAllow} m²</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2">
-                                <span className="text-[9px] font-black text-slate-500 uppercase italic">Deduction %:</span>
-                                <span className="text-xl font-black text-blue-900">{stats.pctAllow}%</span>
-                            </div>
+                        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                            <div className="flex justify-between border-b pb-3 mb-3"><span className="text-[11px] font-black text-slate-400 uppercase">Gross Surface Area</span><span className="font-bold text-slate-700">{stats.gArea} m²</span></div>
+                            <div className="flex justify-between items-center"><span className="text-[11px] font-black text-red-500 uppercase">Allow. Deduction</span><span className="text-4xl font-black text-red-600">{stats.pctAllow}%</span></div>
+                            <p className="text-[9px] text-center mt-2 font-bold text-slate-400 tracking-tighter uppercase italic">Absolute Allowance: {stats.absAllow} m²</p>
                         </div>
 
-                        <div className="flex flex-col justify-end items-end pr-4">
+                        <div className="flex flex-col justify-end items-end pr-6">
                             <div className="text-right">
-                                <p className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest italic leading-none">Verified Official Signature</p>
-                                <div className="border-b-2 border-slate-900 w-48 mb-2"></div>
-                                <p className="font-black text-xs uppercase text-blue-900 px-2 tracking-widest">{header.supervisor || 'Signature Required'}</p>
+                                <p className="text-[11px] font-black text-slate-400 uppercase mb-8 tracking-[0.2em] italic">Official Inspector Signature</p>
+                                <div className="border-b-4 border-slate-900 w-64 mb-3"></div>
+                                <p className="font-black text-lg uppercase text-blue-900 tracking-widest italic">{header.supervisor || 'AUTHORIZED AGENT'}</p>
                             </div>
                         </div>
                     </div>
