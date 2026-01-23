@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kuiper Exports & Imports - Inspection Tool</title>
+    <title>KEIPL - Professional Inspection Tool</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,10 +14,9 @@
             body { background: white; padding: 0; }
             table { border-collapse: collapse; width: 100%; }
             th, td { border: 1px solid #000 !important; padding: 4px; font-size: 8px; }
-            .print-photo { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
+            .print-photo { width: 50px; height: 50px; object-fit: cover; }
         }
-        .table-outline { border: 2px solid #000; }
-        .filter-active { background-color: #1e3a8a !important; color: white !important; }
+        .table-outline { border: 1px solid #000; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -28,198 +27,160 @@
 
         function App() {
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('kuiper_v6_header');
-                return saved ? JSON.parse(saved) : { marker: '', supervisor: '', container: '', factory: '', colour: '', defThickness: '2' };
+                const saved = localStorage.getItem('keipl_v7_header');
+                return saved ? JSON.parse(saved) : { marker: '', supervisor: '', container: '', colour: '', defThickness: '2', allowance: '0' };
             });
 
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('kuiper_v6_entries');
+                const saved = localStorage.getItem('keipl_v7_entries');
                 return saved ? JSON.parse(saved) : [];
             });
 
-            useEffect(() => { localStorage.setItem('kuiper_v6_header', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('kuiper_v6_entries', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('keipl_v7_header', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_v7_entries', JSON.stringify(entries)); }, [entries]);
 
-            const [searchTerm, setSearchTerm] = useState('');
-            const [editingId, setEditingId] = useState(null);
             const [current, setCurrent] = useState({ gL: '', gW: '', nL: '', nW: '', thick: '', photo: null });
 
-            const handlePhoto = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setCurrent(prev => ({ ...prev, photo: reader.result }));
-                    reader.readAsDataURL(file);
-                }
+            // AUTO ALLOWANCE LOGIC
+            const handleGrossChange = (field, value) => {
+                const numVal = parseFloat(value) || 0;
+                const deduct = parseFloat(header.allowance) || 0;
+                const netVal = numVal > deduct ? numVal - deduct : numVal;
+                
+                setCurrent(prev => ({
+                    ...prev,
+                    [field]: value,
+                    [field === 'gL' ? 'nL' : 'nW']: netVal.toString()
+                }));
             };
 
             const addOrUpdateSlab = () => {
                 if (!current.gL || !current.gW) return alert("Enter dimensions");
-                
                 const activeThick = current.thick || header.defThickness || 2;
                 const gSqm = (parseFloat(current.gL) * parseFloat(current.gW)) / 10000;
                 const nSqm = (parseFloat(current.nL) * parseFloat(current.nW)) / 10000;
                 const weightKg = gSqm * (parseFloat(activeThick) / 100) * 2850;
 
-                if (editingId) {
-                    setEntries(entries.map(e => e.id === editingId ? { ...e, ...current, thick: activeThick, gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3), weight: weightKg.toFixed(0) } : e));
-                    setEditingId(null);
-                } else {
-                    const count = entries.length + 1;
-                    const formattedNo = count < 10 ? `0${count}` : count;
-                    const newSlab = {
-                        ...current, id: Date.now(), thick: activeThick,
-                        slabNo: `KEIPL/${formattedNo}`,
-                        gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3),
-                        weight: weightKg.toFixed(0),
-                        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-                    };
-                    setEntries([newSlab, ...entries]);
-                }
+                const newSlab = {
+                    ...current, id: Date.now(), thick: activeThick,
+                    slabNo: `KEIPL/${(entries.length + 1).toString().padStart(2, '0')}`,
+                    gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3), weight: weightKg.toFixed(0)
+                };
+                setEntries([newSlab, ...entries]);
                 setCurrent({ gL: '', gW: '', nL: '', nW: '', thick: '', photo: null });
-                if(document.getElementById('file-upload')) document.getElementById('file-upload').value = "";
             };
 
             const downloadExcel = () => {
-                let csv = `KUIPER EXPORTS & IMPORTS - CONTAINER REPORT\nContainer,${header.container},Supervisor,${header.supervisor}\n\n`;
-                csv += `Slab No,Length,Width,Thick,Gross SQM,Net SQM,Weight(kg)\n`;
+                let csv = `Slab No,Gross L,Gross W,Net L,Net W,Thick,Gross SQM,Net SQM,Weight KG\n`;
                 entries.forEach(e => {
-                    csv += `${e.slabNo},${e.gL},${e.gW},${e.thick},${e.gSqm},${e.nSqm},${e.weight}\n`;
+                    csv += `${e.slabNo},${e.gL},${e.gW},${e.nL},${e.nW},${e.thick},${e.gSqm},${e.nSqm},${e.weight}\n`;
                 });
                 const blob = new Blob([csv], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = `KEIPL_${header.container || 'Report'}.csv`;
+                a.href = URL.createObjectURL(blob);
+                a.download = `KEIPL_${header.container}.csv`;
                 a.click();
             };
 
-            const totals = useMemo(() => {
-                const nArea = entries.reduce((s, e) => s + (parseFloat(e.nSqm) || 0), 0);
-                const totalKg = entries.reduce((s, e) => s + (parseFloat(e.weight) || 0), 0);
-                return { n: nArea.toFixed(3), mt: (totalKg / 1000).toFixed(3) };
-            }, [entries]);
-
-            const filteredEntries = useMemo(() => {
-                return entries.filter(e => e.slabNo.toLowerCase().includes(searchTerm.toLowerCase()));
-            }, [entries, searchTerm]);
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const rows = event.target.result.split('\n').slice(1);
+                    const newEntries = rows.map((row, index) => {
+                        const [gl, gw, nl, nw] = row.split(',');
+                        if(!gl || !gw) return null;
+                        const gSqm = (parseFloat(gl) * parseFloat(gw)) / 10000;
+                        const nSqm = (parseFloat(nl || gl) * parseFloat(nw || gw)) / 10000;
+                        return {
+                            id: Date.now() + index, slabNo: `KEIPL/${(entries.length + index + 1).toString().padStart(2, '0')}`,
+                            gL: gl, gW: gw, nL: nl || gl, nW: nw || gw, thick: header.defThickness,
+                            gSqm: gSqm.toFixed(3), nSqm: nSqm.toFixed(3), weight: (gSqm * (header.defThickness/100) * 2850).toFixed(0)
+                        };
+                    }).filter(x => x);
+                    setEntries([...newEntries, ...entries]);
+                };
+                reader.readAsText(file);
+            };
 
             return (
                 <div className="max-w-6xl mx-auto p-4 md:p-8">
-                    {/* CORPORATE HEADER */}
-                    <div className="bg-white border-2 border-black p-6 mb-4 shadow-md relative">
-                        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
-                            <div>
-                                <h1 className="text-4xl font-black text-blue-900 leading-none tracking-tighter">KUIPER</h1>
-                                <h2 className="text-[11px] font-bold tracking-[0.3em] text-slate-500 uppercase mt-1">Exports & Imports Pvt Ltd</h2>
-                            </div>
+                    {/* HEADER */}
+                    <div className="bg-white border-2 border-black p-6 mb-4 shadow-sm">
+                        <div className="flex justify-between items-center border-b pb-4 mb-4">
+                            <div><h1 className="text-3xl font-black text-blue-900">KUIPER</h1><p className="text-[10px] font-bold text-slate-400">EXPORTS & IMPORTS PVT LTD</p></div>
                             <div className="flex gap-2 no-print">
-                                <button onClick={downloadExcel} className="bg-green-700 text-white px-4 py-2 rounded font-bold uppercase text-[10px]">Excel</button>
-                                <button onClick={() => window.print()} className="bg-blue-800 text-white px-4 py-2 rounded font-bold uppercase text-[10px]">Print PDF</button>
+                                <label className="bg-orange-500 text-white px-3 py-2 rounded text-[10px] font-bold cursor-pointer uppercase">Upload CSV <input type="file" className="hidden" onChange={handleFileUpload} accept=".csv"/></label>
+                                <button onClick={downloadExcel} className="bg-green-700 text-white px-3 py-2 rounded text-[10px] font-bold uppercase">Excel</button>
+                                <button onClick={() => window.print()} className="bg-blue-800 text-white px-3 py-2 rounded text-[10px] font-bold uppercase">PDF</button>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                            {['marker', 'supervisor', 'container', 'factory', 'colour', 'defThickness'].map(key => (
-                                <div key={key} className="border-b">
-                                    <label className="block text-[8px] uppercase font-bold text-slate-400">{key === 'defThickness' ? 'Def. Thick (cm)' : key}</label>
-                                    <input className="w-full font-bold outline-none text-xs py-1" value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} />
-                                </div>
+                            {['marker', 'supervisor', 'container', 'colour'].map(k => (
+                                <div key={k} className="border-b"><label className="block text-[8px] uppercase font-bold text-slate-400">{k}</label>
+                                <input className="w-full font-bold outline-none text-xs" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} /></div>
                             ))}
+                            <div className="border-b"><label className="block text-[8px] uppercase font-bold text-blue-500">Auto Allowance (cm)</label>
+                                <select className="w-full font-bold text-xs outline-none" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
+                                    <option value="0">None</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option><option value="10">10 cm</option>
+                                </select>
+                            </div>
+                            <div className="border-b"><label className="block text-[8px] uppercase font-bold text-slate-400">Thick (cm)</label>
+                            <input type="number" className="w-full font-bold outline-none text-xs" value={header.defThickness} onChange={e => setHeader({...header, defThickness: e.target.value})} /></div>
                         </div>
                     </div>
 
-                    {/* INPUT FORM */}
-                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 shadow-2xl border-l-8 border-blue-600">
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                            <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                                <div><label className="text-[9px] text-slate-500 uppercase font-black">Gross (L x W)</label>
-                                    <div className="flex gap-1 mt-1">
-                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded font-black" value={current.gL} onChange={e => setCurrent({...current, gL: e.target.value, nL: e.target.value})} />
-                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-black" value={current.gW} onChange={e => setCurrent({...current, gW: e.target.value, nW: e.target.value})} />
-                                    </div>
-                                </div>
-                                <div><label className="text-[9px] text-green-500 uppercase font-black">Net (L x W)</label>
-                                    <div className="flex gap-1 mt-1">
-                                        <input type="number" placeholder="L" className="w-full p-2 text-black rounded bg-green-50" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                        <input type="number" placeholder="W" className="w-full p-2 text-black rounded bg-green-50" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
-                                    </div>
-                                </div>
+                    {/* ENTRY FORM */}
+                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl mb-6 shadow-xl border-l-8 border-blue-600">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
+                            <div><label className="text-[9px] text-slate-400 uppercase font-black">Gross L x W</label>
+                                <div className="flex gap-1 mt-1"><input type="number" placeholder="L" className="w-full p-2 text-black rounded font-black" value={current.gL} onChange={e => handleGrossChange('gL', e.target.value)} />
+                                <input type="number" placeholder="W" className="w-full p-2 text-black rounded font-black" value={current.gW} onChange={e => handleGrossChange('gW', e.target.value)} /></div>
                             </div>
-                            <div>
-                                <label className="text-[9px] text-orange-400 uppercase font-black">Photo</label>
-                                <input id="file-upload" type="file" accept="image/*" onChange={handlePhoto} className="block w-full text-[10px] text-slate-400 mt-1" />
+                            <div><label className="text-[9px] text-green-500 uppercase font-black">Net L x W</label>
+                                <div className="flex gap-1 mt-1"><input type="number" className="w-full p-2 text-black rounded bg-green-50" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                <input type="number" className="w-full p-2 text-black rounded bg-green-50" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} /></div>
                             </div>
-                            <div>
-                                <label className="text-[9px] text-slate-500 uppercase font-black">Thick (cm)</label>
-                                <input type="number" placeholder={header.defThickness} className="w-full p-2 text-black rounded font-bold mt-1" value={current.thick} onChange={e => setCurrent({...current, thick: e.target.value})} />
-                            </div>
-                            <button onClick={addOrUpdateSlab} className="bg-blue-600 font-black py-3 rounded uppercase text-sm hover:bg-blue-500 shadow-lg">
-                                {editingId ? 'Update' : 'Add Slab'}
-                            </button>
+                            <div className="col-span-2 md:col-span-1"><label className="text-[9px] text-slate-400 uppercase font-black">Photo</label><input id="file-upload" type="file" onChange={handlePhoto} className="block w-full text-[10px] mt-1"/></div>
+                            <button onClick={addOrUpdateSlab} className="bg-blue-600 font-black py-3 rounded uppercase text-sm col-span-2 md:col-span-1">Add Slab</button>
                         </div>
                     </div>
 
                     {/* TABLE */}
-                    <div className="bg-white table-outline overflow-hidden rounded-sm mb-6 shadow-sm">
-                        <div className="no-print p-3 bg-slate-50 border-b">
-                            <input type="text" placeholder="🔍 Search Slab ID (e.g. 05)..." className="w-full p-2 rounded border text-sm" onChange={e => setSearchTerm(e.target.value)} />
-                        </div>
+                    <div className="bg-white table-outline overflow-hidden rounded-sm mb-6">
                         <table className="w-full border-collapse">
-                            <thead className="bg-slate-900 text-white uppercase text-[9px] tracking-widest">
+                            <thead className="bg-slate-900 text-white text-[9px] uppercase tracking-widest">
                                 <tr>
-                                    <th className="p-3 text-left">Slab No</th>
-                                    <th className="p-3 text-center">Photo</th>
-                                    <th className="p-3 text-center">Net Area</th>
-                                    <th className="p-3 text-center">Weight</th>
-                                    <th className="p-3 text-right no-print">Manage</th>
+                                    <th className="p-2 text-left">Slab No</th>
+                                    <th className="p-2 text-center">Gross (cm)</th>
+                                    <th className="p-2 text-center">Net (cm)</th>
+                                    <th className="p-2 text-center">Area (m²)</th>
+                                    <th className="p-2 text-right no-print">Manage</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {filteredEntries.map((e) => (
-                                    <tr key={e.id} className="hover:bg-blue-50/50">
-                                        <td className="p-3 font-black text-blue-900">
-                                            {e.slabNo} <br/>
-                                            <span className="text-[9px] text-slate-400 font-normal">{e.gL}x{e.gW} @ {e.thick}cm</span>
-                                        </td>
-                                        <td className="p-2 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover border rounded print-photo" /> : '-'}
-                                        </td>
-                                        <td className="p-3 text-center font-bold text-green-700">{e.nSqm} m²</td>
-                                        <td className="p-3 text-center text-xs font-mono">{e.weight} kg</td>
-                                        <td className="p-3 text-right no-print">
-                                            <button onClick={() => {setEditingId(e.id); setCurrent({...e}); window.scrollTo(0,0);}} className="text-[10px] font-bold text-blue-600 mr-3">EDIT</button>
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400">✕</button>
-                                        </td>
+                                {entries.map((e) => (
+                                    <tr key={e.id}>
+                                        <td className="p-2 font-black text-blue-900">{e.slabNo}</td>
+                                        <td className="p-2 text-center text-[10px]">{e.gL} x {e.gW}</td>
+                                        <td className="p-2 text-center text-[10px] font-bold text-green-700">{e.nL} x {e.nW}</td>
+                                        <td className="p-2 text-center text-[10px] font-bold">{e.nSqm}</td>
+                                        <td className="p-2 text-right no-print"><button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400">✕</button></td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* FOOTER & SIGNATURE */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-blue-900 text-white p-6 border-2 border-black shadow-xl">
-                            <div className="flex justify-between mb-2 opacity-70 uppercase text-[10px] font-bold">
-                                <span>Total Slab Count</span>
-                                <span>{entries.length} Slabs</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-blue-300 uppercase text-[10px] font-bold">Total Net Payload</span>
-                                <span className="text-3xl font-black text-green-400">{totals.n} m² / {totals.mt} MT</span>
-                            </div>
+                    {/* SUMMARY */}
+                    <div className="flex justify-between items-end border-t pt-4">
+                        <div className="text-[10px] font-bold uppercase">
+                            <p>Total Net: <span className="text-lg text-green-700">{totals.n} m²</span></p>
+                            <p>Est Weight: <span className="text-lg text-blue-900">{totals.mt} MT</span></p>
                         </div>
-                        <div className="border-2 border-black p-6 flex flex-col justify-end bg-white relative overflow-hidden">
-                             <div className="absolute top-2 left-2 text-[8px] font-bold uppercase text-slate-300">Authorized Signature</div>
-                             <div className="mt-8 border-b-2 border-black w-full italic font-serif text-center py-2 text-xl">
-                                {header.supervisor || "_________________"}
-                             </div>
-                             <div className="text-center text-[10px] font-bold uppercase mt-2">Supervisor Checked</div>
+                        <div className="text-right border-t border-black w-48 no-print">
+                            <p className="text-[9px] font-bold uppercase mt-1">Supervisor: {header.supervisor || "______"}</p>
                         </div>
-                    </div>
-
-                    <div className="mt-8 flex justify-between no-print border-t pt-4">
-                        <button onClick={() => {if(confirm("Wipe all data?")){localStorage.clear(); location.reload();}}} className="text-xs font-bold text-red-500 uppercase underline">Reset System</button>
-                        <p className="text-[10px] font-bold text-slate-400">KUIPER DIGITAL INSPECTION SYSTEM V6.0</p>
                     </div>
                 </div>
             );
