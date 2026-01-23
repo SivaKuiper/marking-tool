@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEIPL - Global Inspection System</title>
+    <title>KEIPL - Bulk Import System</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,38 +12,37 @@
         @media print {
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
-            .report-box { border: 1px solid #000 !important; box-shadow: none !important; }
+            .report-box { border: 1px solid #000 !important; }
             th, td { border: 1px solid #000 !important; padding: 4px; font-size: 9px !important; }
-            .print-photo { width: 50px; height: 50px; object-fit: cover; border: 1px solid #ddd; }
         }
+        .import-area { background: #f8fafc; border: 2px dashed #cbd5e1; transition: all 0.2s; }
+        .import-area:focus-within { border-color: #3b82f6; background: #eff6ff; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-900 font-sans">
+<body class="bg-slate-50 text-slate-900 font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
         function App() {
-            // --- DATA STATES ---
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('keipl_h_v73');
+                const saved = localStorage.getItem('keipl_h_v74');
                 return saved ? JSON.parse(saved) : { marker:'', supervisor:'', container:'', factory:'', destination:'', colour:'', defThick:'2', allowance:'0' };
             });
 
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('keipl_e_v73');
+                const saved = localStorage.getItem('keipl_e_v74');
                 return saved ? JSON.parse(saved) : [];
             });
 
             const [current, setCurrent] = useState({ gL:'', gW:'', nL:'', nW:'', photo: null });
+            const [bulkText, setBulkText] = useState('');
             const [editingId, setEditingId] = useState(null);
 
-            // --- AUTO SAVE ---
-            useEffect(() => { localStorage.setItem('keipl_h_v73', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('keipl_e_v73', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('keipl_h_v74', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_e_v74', JSON.stringify(entries)); }, [entries]);
 
-            // --- FUNCTIONS ---
             const handleGrossInput = (field, val) => {
                 const num = parseFloat(val) || 0;
                 const ded = parseFloat(header.allowance) || 0;
@@ -51,17 +50,8 @@
                 setCurrent(p => ({ ...p, [field]: val, [field==='gL'?'nL':'nW']: net.toString() }));
             };
 
-            const handlePhoto = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setCurrent(p => ({ ...p, photo: reader.result }));
-                    reader.readAsDataURL(file);
-                }
-            };
-
             const addOrUpdate = () => {
-                if (!current.gL || !current.gW) return alert("Enter dimensions");
+                if (!current.gL || !current.gW) return;
                 const gS = (parseFloat(current.gL)*parseFloat(current.gW))/10000;
                 const nS = (parseFloat(current.nL)*parseFloat(current.nW))/10000;
                 const kg = (gS * (parseFloat(header.defThick)/100) * 2850).toFixed(0);
@@ -78,38 +68,43 @@
                     setEntries([newSlab, ...entries]);
                 }
                 setCurrent({ gL:'', gW:'', nL:'', nW:'', photo: null });
-                if(document.getElementById('photo-input')) document.getElementById('photo-input').value = '';
             };
 
-            const handleFileUpload = (e) => {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const rows = evt.target.result.split('\n').slice(1);
-                    const newEntries = rows.map((row, i) => {
-                        const [gl, gw, nl, nw] = row.split(',');
-                        if(!gl || !gw) return null;
-                        const gS = (parseFloat(gl)*parseFloat(gw))/10000;
-                        const nS = (parseFloat(nl||gl)*parseFloat(nw||gw))/10000;
-                        return {
-                            id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
-                            gL:gl, gW:gw, nL:nl||gl, nW:nw||gw, thick: header.defThick,
-                            nSqm: nS.toFixed(3), wt: (gS * (header.defThick/100) * 2850).toFixed(0), photo: null
-                        };
-                    }).filter(x => x);
-                    setEntries([...newEntries, ...entries]);
-                };
-                reader.readAsText(file);
+            // BULK IMPORT LOGIC (Handles Copy-Paste from Excel)
+            const processBulkImport = () => {
+                if (!bulkText.trim()) return;
+                const rows = bulkText.trim().split('\n');
+                const newEntries = rows.map((row, i) => {
+                    // Splits by Tab (Excel paste) or Comma (CSV)
+                    const cols = row.includes('\t') ? row.split('\t') : row.split(',');
+                    const gl = cols[0]?.trim();
+                    const gw = cols[1]?.trim();
+                    const nl = cols[2]?.trim() || gl;
+                    const nw = cols[3]?.trim() || gw;
+
+                    if (!gl || isNaN(gl)) return null;
+
+                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
+                    const nS = (parseFloat(nl)*parseFloat(nw))/10000;
+                    return {
+                        id: Date.now() + i,
+                        slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
+                        gL:gl, gW:gw, nL:nl, nW:nw, thick: header.defThick,
+                        nSqm: nS.toFixed(3), wt: (gS * (header.defThick/100) * 2850).toFixed(0), photo: null
+                    };
+                }).filter(x => x);
+
+                setEntries([...newEntries, ...entries]);
+                setBulkText('');
+                alert(`Successfully imported ${newEntries.length} slabs!`);
             };
 
             const downloadExcel = () => {
-                let csv = "KUIPER EXPORTS & IMPORTS - PACKING LIST\n";
-                csv += `Container: ${header.container}, Factory: ${header.factory}, Colour: ${header.colour}\n\n`;
-                csv += "Slab No,Gross L,Gross W,Net L,Net W,Net SQM,Weight KG\n";
+                let csv = "Slab No,Gross L,Gross W,Net L,Net W,Net SQM,Weight KG\n";
                 entries.forEach(e => { csv += `${e.slabNo},${e.gL},${e.gW},${e.nL},${e.nW},${e.nSqm},${e.wt}\n`; });
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `KEIPL_${header.container || 'Report'}.csv`; a.click();
+                a.download = `KEIPL_${header.container}.csv`; a.click();
             };
 
             const totals = useMemo(() => {
@@ -119,83 +114,92 @@
             }, [entries]);
 
             return (
-                <div className="max-w-5xl mx-auto p-4 md:py-10">
-                    {/* CORPORATE HEADER */}
-                    <div className="bg-white p-6 border-t-8 border-blue-900 shadow-md mb-6 report-box">
+                <div className="max-w-5xl mx-auto p-4 md:py-8">
+                    {/* BRANDING HEADER */}
+                    <div className="bg-white p-6 border-t-8 border-blue-900 shadow-sm mb-6 report-box">
                         <div className="flex justify-between items-start mb-6 border-b pb-4">
                             <div>
-                                <h1 className="text-4xl font-black text-blue-900 tracking-tighter">KUIPER</h1>
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em]">Exports & Imports Pvt Ltd</p>
+                                <h1 className="text-3xl font-black text-blue-900 tracking-tighter leading-none">KUIPER</h1>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Exports & Imports Pvt Ltd</p>
                             </div>
                             <div className="flex gap-2 no-print">
-                                <label className="bg-amber-600 text-white px-4 py-2 rounded text-[10px] font-bold uppercase cursor-pointer">Upload CSV <input type="file" className="hidden" onChange={handleFileUpload} accept=".csv"/></label>
-                                <button onClick={downloadExcel} className="bg-green-700 text-white px-4 py-2 rounded text-[10px] font-bold uppercase">Excel</button>
-                                <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded text-[10px] font-bold uppercase">PDF</button>
+                                <button onClick={downloadExcel} className="bg-green-700 text-white px-4 py-2 rounded text-[10px] font-bold uppercase">Download Excel</button>
+                                <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded text-[10px] font-bold uppercase">Print PDF</button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             {['marker', 'supervisor', 'container', 'factory', 'destination', 'colour', 'defThick', 'allowance'].map(k => (
                                 <div key={k} className="border-b">
-                                    <label className="block text-[9px] font-bold text-slate-400 uppercase">{k}</label>
+                                    <label className="block text-[8px] font-bold text-slate-400 uppercase">{k}</label>
                                     {k === 'allowance' ? (
                                         <select className="w-full font-bold text-xs py-1 outline-none" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})}>
-                                            <option value="0">0 cm (None)</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option><option value="10">10 cm</option>
+                                            <option value="0">None</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option>
                                         </select>
                                     ) : (
-                                        <input className="w-full font-bold text-xs py-1 outline-none bg-transparent" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
+                                        <input className="w-full font-bold text-xs py-1 outline-none bg-transparent uppercase" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
                                     )}
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* INPUT SECTION */}
-                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl shadow-2xl mb-8 border-l-8 border-blue-600">
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                            <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                                <div><label className="text-[10px] text-slate-400 font-bold uppercase">Gross (L x W)</label>
-                                <div className="flex gap-1"><input type="number" placeholder="L" className="w-full p-2 rounded text-black font-bold outline-none" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
-                                <input type="number" placeholder="W" className="w-full p-2 rounded text-black font-bold outline-none" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} /></div></div>
-                                <div><label className="text-[10px] text-green-400 font-bold uppercase">Net (L x W)</label>
-                                <div className="flex gap-1"><input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} /></div></div>
+                    {/* BULK IMPORT SECTION (RESTORED & IMPROVED) */}
+                    <div className="no-print bg-white p-6 rounded-lg shadow-sm border border-slate-200 mb-6">
+                        <h3 className="text-xs font-black uppercase text-slate-500 mb-3 flex items-center gap-2">
+                            <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded">Bulk Paste</span> 
+                            Copy rows from Excel (GL, GW, NL, NW) and paste here:
+                        </h3>
+                        <textarea 
+                            className="w-full h-24 p-3 text-xs font-mono border import-area rounded outline-none"
+                            placeholder="Example format:&#10;305	185	300	180&#10;295	175	290	170"
+                            value={bulkText}
+                            onChange={(e) => setBulkText(e.target.value)}
+                        ></textarea>
+                        <button 
+                            onClick={processBulkImport}
+                            className="mt-3 bg-slate-800 text-white px-6 py-2 rounded text-xs font-bold uppercase hover:bg-black transition-colors"
+                        >Import Slabs Now</button>
+                    </div>
+
+                    {/* MANUAL ENTRY */}
+                    <div className="no-print bg-slate-900 text-white p-6 rounded-xl shadow-xl mb-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                            <div className="flex gap-2">
+                                <div className="flex-1"><label className="text-[10px] text-slate-400 font-bold uppercase">Gross L x W</label>
+                                <div className="flex gap-1 mt-1"><input type="number" placeholder="L" className="w-full p-2 rounded text-black font-bold" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
+                                <input type="number" placeholder="W" className="w-full p-2 rounded text-black font-bold" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} /></div></div>
                             </div>
-                            <div>
-                                <label className="text-[10px] text-slate-400 font-bold uppercase">Slab Photo</label>
-                                <input id="photo-input" type="file" accept="image/*" onChange={handlePhoto} className="text-[10px] block w-full mt-1 text-slate-500" />
+                            <div className="flex gap-2">
+                                <div className="flex-1"><label className="text-[10px] text-green-400 font-bold uppercase">Net L x W</label>
+                                <div className="flex gap-1 mt-1"><input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} /></div></div>
                             </div>
-                            <button onClick={addOrUpdate} className={`font-black py-3 rounded uppercase text-xs shadow-lg transition-all ${editingId ? 'bg-orange-500':'bg-blue-600 hover:bg-blue-500'}`}>
-                                {editingId ? 'Update Slab' : 'Add Slab'}
-                            </button>
+                            <button onClick={addOrUpdate} className="bg-blue-600 font-black py-2.5 rounded uppercase text-xs shadow-lg">{editingId ? 'Update' : 'Add Single Slab'}</button>
                         </div>
                     </div>
 
-                    {/* TABLE */}
+                    {/* DATA TABLE */}
                     <div className="bg-white border border-slate-200 overflow-hidden shadow-sm report-box">
-                        <table className="w-full">
+                        <table className="w-full text-center">
                             <thead className="bg-slate-50 border-b">
-                                <tr className="text-[10px] uppercase text-slate-500">
+                                <tr className="text-[9px] uppercase font-bold text-slate-500">
                                     <th className="p-3 text-left">Slab No</th>
-                                    <th className="p-3 text-center">Photo</th>
-                                    <th className="p-3 text-center">Gross Dim</th>
-                                    <th className="p-3 text-center text-green-700">Net Dim</th>
-                                    <th className="p-3 text-center">Net Area</th>
-                                    <th className="p-3 text-right no-print">Action</th>
+                                    <th className="p-3">Gross Dim</th>
+                                    <th className="p-3 text-green-700 font-black">Net Dim</th>
+                                    <th className="p-3 text-blue-900">Area (m²)</th>
+                                    <th className="p-3 no-print">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {entries.map(e => (
-                                    <tr key={e.id} className="hover:bg-slate-50 group">
-                                        <td className="p-3 font-black text-blue-900">{e.slabNo}</td>
-                                        <td className="p-1 text-center">
-                                            {e.photo ? <img src={e.photo} className="h-12 w-12 mx-auto object-cover rounded print-photo" /> : '-'}
-                                        </td>
-                                        <td className="p-3 text-center text-xs text-slate-400">{e.gL} x {e.gW}</td>
-                                        <td className="p-3 text-center text-xs font-bold text-green-700">{e.nL} x {e.nW}</td>
-                                        <td className="p-3 text-center font-black text-xs">{e.nSqm} m²</td>
-                                        <td className="p-3 text-right no-print">
-                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-500 mr-3 text-[10px] font-bold hover:underline">EDIT</button>
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400 hover:text-red-600 font-bold text-xs">✕</button>
+                                    <tr key={e.id} className="text-xs hover:bg-slate-50">
+                                        <td className="p-3 text-left font-black text-blue-900">{e.slabNo}</td>
+                                        <td className="p-3 text-slate-400">{e.gL} x {e.gW}</td>
+                                        <td className="p-3 font-bold text-green-700">{e.nL} x {e.nW}</td>
+                                        <td className="p-3 font-black">{e.nSqm}</td>
+                                        <td className="p-3 no-print">
+                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-500 font-bold mr-4">Edit</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-300">✕</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -204,19 +208,21 @@
                     </div>
 
                     {/* FOOTER */}
-                    <div className="mt-8 flex flex-col md:flex-row justify-between items-end gap-6 border-t pt-8">
-                        <div className="bg-blue-900 text-white p-6 rounded shadow-xl flex gap-12">
-                            <div><p className="text-[9px] font-bold uppercase opacity-50">Total Area</p><p className="text-3xl font-black">{totals.area} m²</p></div>
-                            <div><p className="text-[9px] font-bold uppercase opacity-50">Total Weight</p><p className="text-3xl font-black text-green-400">{totals.mt} MT</p></div>
+                    <div className="mt-8 flex justify-between items-end border-t pt-8">
+                        <div className="flex gap-8">
+                            <div className="bg-blue-900 text-white px-6 py-3 rounded shadow-lg">
+                                <p className="text-[8px] font-bold uppercase opacity-50">Total Area</p>
+                                <p className="text-2xl font-black">{totals.area} m²</p>
+                            </div>
+                            <div className="bg-green-700 text-white px-6 py-3 rounded shadow-lg">
+                                <p className="text-[8px] font-bold uppercase opacity-50">Gross Weight</p>
+                                <p className="text-2xl font-black">{totals.mt} MT</p>
+                            </div>
                         </div>
-                        <div className="text-right pb-2">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Checked By Supervisor</p>
-                            <p className="text-sm font-black border-t-2 border-slate-900 pt-1 px-8 inline-block uppercase tracking-wider">{header.supervisor || 'Signature'}</p>
+                        <div className="text-right">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Checked By Supervisor</p>
+                            <p className="text-sm font-black border-t border-slate-900 pt-1 px-10 inline-block uppercase tracking-wider">{header.supervisor || 'Signature'}</p>
                         </div>
-                    </div>
-
-                    <div className="mt-12 text-center no-print">
-                        <button onClick={() => { if(confirm("This will delete ALL data. Proceed?")) { localStorage.clear(); location.reload(); } }} className="text-[9px] font-bold text-slate-300 uppercase underline hover:text-red-500 transition-colors">Emergency System Reset</button>
                     </div>
                 </div>
             );
