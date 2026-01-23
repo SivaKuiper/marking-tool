@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEIPL - Professional Packing List System</title>
+    <title>KEIPL - Global Inspection System</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,7 +17,6 @@
             .print-photo { width: 60px; height: 60px; object-fit: cover; border: 1px solid #000; }
         }
         .import-area { background: #fdfdfd; border: 2px dashed #cbd5e1; }
-        .import-area:focus { border-color: #1e3a8a; background: #fff; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -27,9 +26,8 @@
         const { useState, useEffect, useMemo } = React;
 
         function App() {
-            // --- CORE STATE ---
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('keipl_h_v76');
+                const saved = localStorage.getItem('keipl_h_v77');
                 return saved ? JSON.parse(saved) : { 
                     customer: '', container: '', factory: '', destination: '', 
                     colour: '', marker: '', supervisor: '', defThick: '2', allowance: '0' 
@@ -37,7 +35,7 @@
             });
 
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('keipl_e_v76');
+                const saved = localStorage.getItem('keipl_e_v77');
                 return saved ? JSON.parse(saved) : [];
             });
 
@@ -45,21 +43,9 @@
             const [bulkText, setBulkText] = useState('');
             const [editingId, setEditingId] = useState(null);
 
-            // --- PERSISTENCE ---
-            useEffect(() => { localStorage.setItem('keipl_h_v76', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('keipl_e_v76', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('keipl_h_v77', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_e_v77', JSON.stringify(entries)); }, [entries]);
 
-            // --- PHOTO HANDLER ---
-            const handlePhoto = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setCurrent(p => ({ ...p, photo: reader.result }));
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            // --- CALCULATION LOGIC ---
             const handleGrossInput = (field, val) => {
                 const num = parseFloat(val) || 0;
                 const ded = parseFloat(header.allowance) || 0;
@@ -85,45 +71,24 @@
                     setEntries([newSlab, ...entries]);
                 }
                 setCurrent({ bundle: '', gL:'', gW:'', nL:'', nW:'', photo: null });
-                if(document.getElementById('p-input')) document.getElementById('p-input').value = '';
             };
 
-            // --- EXCEL EXPORT (FORMATTED) ---
             const downloadExcel = () => {
-                let csv = `KUIPER EXPORTS & IMPORTS PVT LTD - PACKING LIST\n`;
-                csv += `Customer,${header.customer},Container,${header.container}\n`;
-                csv += `Factory,${header.factory},Destination,${header.destination}\n`;
-                csv += `Colour,${header.colour},Thickness,${header.defThick} cm\n\n`;
-                csv += `Slab No,Bundle,Gross Length,Gross Width,Net Length,Net Width,Net Area (SQM),Weight (KG)\n`;
-                entries.forEach(e => {
-                    csv += `${e.slabNo},${e.bundle || ''},${e.gL},${e.gW},${e.nL},${e.nW},${e.nSqm},${e.wt}\n`;
-                });
-                csv += `\nTOTALS,,, , , ,${totals.area} SQM,${totals.mt} MT\n`;
-                csv += `Supervisor: ${header.supervisor}\n`;
-
+                let csv = `KUIPER EXPORTS & IMPORTS - PACKING LIST\nCustomer,${header.customer},Container,${header.container}\nSlab No,Bundle,Gross L,Gross W,Net L,Net W,SQM,KG\n`;
+                entries.forEach(e => { csv += `${e.slabNo},${e.bundle},${e.gL},${e.gW},${e.nL},${e.nW},${e.nSqm},${e.wt}\n`; });
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `PackingList_${header.container || 'Report'}.csv`; a.click();
+                a.download = `KEIPL_${header.container}.csv`; a.click();
             };
 
-            const processBulkImport = () => {
-                const rows = bulkText.trim().split('\n');
-                const newEntries = rows.map((row, i) => {
-                    const cols = row.includes('\t') ? row.split('\t') : row.split(',');
-                    const gl = cols[0]?.trim(); const gw = cols[1]?.trim();
-                    const nl = cols[2]?.trim() || gl; const nw = cols[3]?.trim() || gw;
-                    const bundle = cols[4]?.trim() || '';
-                    if (!gl || isNaN(gl)) return null;
-                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
-                    const nS = (parseFloat(nl)*parseFloat(nw))/10000;
-                    return {
-                        id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
-                        gL:gl, gW:gw, nL:nl, nW:nw, bundle: bundle, thick: header.defThick,
-                        nSqm: nS.toFixed(3), wt: (gS * (header.defThick/100) * 2850).toFixed(0), photo: null
-                    };
-                }).filter(x => x);
-                setEntries([...newEntries, ...entries]); setBulkText('');
-            };
+            const clearAllData = () => {
+                if(window.confirm("ARE YOU SURE? This will delete the ENTIRE list and all photos.")) {
+                    if(window.confirm("FINAL CHECK: Are you really sure you want to clear all data?")) {
+                        localStorage.clear();
+                        window.location.reload();
+                    }
+                }
+            }
 
             const totals = useMemo(() => {
                 const area = entries.reduce((a, b) => a + parseFloat(b.nSqm), 0);
@@ -131,105 +96,117 @@
                 return { area: area.toFixed(3), mt: (weight/1000).toFixed(3) };
             }, [entries]);
 
-            const clearAllData = () => {
-                if(window.confirm("CRITICAL: This will delete ALL data. Are you sure?")) {
-                    localStorage.clear();
-                    setEntries([]);
-                    setHeader({ customer: '', container: '', factory: '', destination: '', colour: '', marker: '', supervisor: '', defThick: '2', allowance: '0' });
-                    window.location.reload();
-                }
-            }
-
             return (
-                <div className="max-w-6xl mx-auto p-4 md:py-10">
-                    {/* CORPORATE HEADER */}
-                    <div className="bg-white p-8 border-t-[12px] border-blue-900 shadow-lg mb-6 report-box">
-                        <div className="flex justify-between items-start mb-8 border-b-2 border-slate-100 pb-6">
-                            <div>
-                                <h1 className="text-5xl font-black text-blue-900 tracking-tighter leading-none">KUIPER</h1>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.4em] mt-2">Exports & Imports Pvt Ltd</p>
-                            </div>
-                            <div className="flex gap-3 no-print">
-                                <button onClick={downloadExcel} className="bg-green-700 hover:bg-green-800 text-white px-5 py-2.5 rounded shadow text-xs font-black uppercase transition-all">Excel Export</button>
-                                <button onClick={() => window.print()} className="bg-blue-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded shadow text-xs font-black uppercase transition-all">PDF Report</button>
-                            </div>
+                <div className="max-w-6xl mx-auto p-4 md:py-6">
+                    {/* VISIBLE RESET & ACTIONS */}
+                    <div className="flex justify-end gap-2 mb-4 no-print">
+                        <button onClick={clearAllData} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-[10px] font-black uppercase shadow-lg border-2 border-white">
+                            ⚠️ Reset Everything
+                        </button>
+                        <button onClick={downloadExcel} className="bg-green-700 text-white px-4 py-2 rounded text-[10px] font-black uppercase shadow-md">Excel List</button>
+                        <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded text-[10px] font-black uppercase shadow-md">Print PDF</button>
+                    </div>
+
+                    {/* HEADER */}
+                    <div className="bg-white p-6 border-t-[10px] border-blue-900 shadow-sm mb-6 report-box">
+                        <div className="mb-6">
+                            <h1 className="text-4xl font-black text-blue-900 leading-none">KUIPER</h1>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Exports & Imports Pvt Ltd</p>
                         </div>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             {['customer', 'container', 'factory', 'destination', 'colour', 'marker', 'supervisor', 'defThick'].map(k => (
-                                <div key={k} className="border-b-2 border-slate-50">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{k === 'defThick' ? 'Thickness (cm)' : k}</label>
-                                    <input className="w-full font-bold text-sm py-1 outline-none bg-transparent placeholder-slate-200" placeholder={`...`} value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
+                                <div key={k} className="border-b">
+                                    <label className="block text-[8px] font-black text-slate-400 uppercase">{k}</label>
+                                    <input className="w-full font-bold text-xs py-1 outline-none uppercase" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
                                 </div>
                             ))}
-                            <div className="border-b-2 border-slate-50">
-                                <label className="block text-[10px] font-black text-blue-500 uppercase mb-1">Auto Allowance</label>
-                                <select className="w-full font-bold text-sm py-1 outline-none bg-transparent" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
+                            <div className="border-b">
+                                <label className="block text-[8px] font-black text-blue-500 uppercase tracking-tighter">Auto Allowance</label>
+                                <select className="w-full font-bold text-xs py-1 outline-none bg-transparent" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
                                     <option value="0">0 cm</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option>
                                 </select>
                             </div>
                         </div>
                     </div>
 
-                    {/* BULK & MANUAL INPUTS */}
+                    {/* INPUTS */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print mb-6">
-                        <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                             <h3 className="text-xs font-black uppercase text-slate-500 mb-4 flex items-center gap-2">
-                                <span className="w-2 h-2 bg-blue-600 rounded-full"></span> Bulk Excel Paste (GL, GW, NL, NW, Bundle)
-                             </h3>
-                             <textarea className="w-full h-32 p-4 text-xs font-mono border import-area rounded outline-none mb-3" placeholder="Paste data here..." value={bulkText} onChange={e => setBulkText(e.target.value)}></textarea>
-                             <button onClick={processBulkImport} className="bg-slate-800 text-white px-8 py-2.5 rounded text-xs font-black uppercase hover:bg-black transition-all">Import Now</button>
+                        <div className="md:col-span-2 bg-white p-5 rounded border border-slate-200 shadow-sm">
+                             <h3 className="text-[10px] font-black uppercase text-slate-500 mb-2 italic">Excel Bulk Import (GL, GW, NL, NW, Bundle)</h3>
+                             <textarea className="w-full h-32 p-3 text-xs font-mono border import-area rounded outline-none" placeholder="Paste data here..." value={bulkText} onChange={e => setBulkText(e.target.value)}></textarea>
+                             <button onClick={() => {
+                                const rows = bulkText.trim().split('\n');
+                                const newEnts = rows.map((row, i) => {
+                                    const cols = row.includes('\t') ? row.split('\t') : row.split(',');
+                                    const gl = cols[0]?.trim(); const gw = cols[1]?.trim();
+                                    const nl = cols[2]?.trim() || gl; const nw = cols[3]?.trim() || gw;
+                                    const bundle = cols[4]?.trim() || '';
+                                    if (!gl || isNaN(gl)) return null;
+                                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
+                                    const nS = (parseFloat(nl)*parseFloat(nw))/10000;
+                                    return {
+                                        id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
+                                        gL:gl, gW:gw, nL:nl, nW:nw, bundle: bundle, thick: header.defThick,
+                                        nSqm: nS.toFixed(3), wt: (gS * (header.defThick/100) * 2850).toFixed(0), photo: null
+                                    };
+                                }).filter(x => x);
+                                setEntries([...newEnts, ...entries]); setBulkText('');
+                             }} className="mt-2 bg-slate-800 text-white px-6 py-2 rounded text-[10px] font-black uppercase">Import All Rows</button>
                         </div>
 
-                        <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl flex flex-col justify-between">
-                            <h3 className="text-xs font-black uppercase text-slate-400 mb-4 tracking-widest">Manual Entry</h3>
-                            <div className="space-y-4">
-                                <input type="text" placeholder="Bundle ID (Optional)" className="w-full p-2 rounded text-black font-bold outline-none text-xs" value={current.bundle} onChange={e => setCurrent({...current, bundle: e.target.value})} />
+                        <div className="bg-slate-900 text-white p-5 rounded shadow-xl border-l-4 border-blue-500">
+                            <h3 className="text-[10px] font-black uppercase text-blue-400 mb-4 tracking-widest">Manual Entry</h3>
+                            <div className="space-y-3">
+                                <input type="text" placeholder="Bundle ID" className="w-full p-2 rounded text-black font-bold text-xs" value={current.bundle} onChange={e => setCurrent({...current, bundle: e.target.value})} />
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input type="number" placeholder="Gross L" className="p-2 rounded text-black font-bold outline-none" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
-                                    <input type="number" placeholder="Gross W" className="p-2 rounded text-black font-bold outline-none" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
+                                    <input type="number" placeholder="Gross L" className="p-2 rounded text-black font-bold" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
+                                    <input type="number" placeholder="Gross W" className="p-2 rounded text-black font-bold" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input type="number" placeholder="Net L" className="p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                    <input type="number" placeholder="Net W" className="p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
+                                    <input type="number" placeholder="Net L" className="p-2 rounded bg-green-50 text-black font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                    <input type="number" placeholder="Net W" className="p-2 rounded bg-green-50 text-black font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                 </div>
-                                <div>
-                                    <label className="text-[9px] font-bold text-slate-500 block mb-1">Add Photo</label>
-                                    <input id="p-input" type="file" accept="image/*" onChange={handlePhoto} className="text-[10px] text-slate-400" />
-                                </div>
+                                <input type="file" accept="image/*" className="text-[10px] text-slate-400" onChange={(e) => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => setCurrent(p => ({ ...p, photo: reader.result }));
+                                    reader.readAsDataURL(e.target.files[0]);
+                                }} />
                             </div>
-                            <button onClick={addOrUpdate} className="mt-4 bg-blue-600 hover:bg-blue-500 py-3 rounded font-black uppercase text-xs shadow-lg transition-all">{editingId ? 'Update' : 'Add Slab'}</button>
+                            <div className="flex gap-2 mt-4">
+                                <button onClick={addOrUpdate} className="flex-1 bg-blue-600 py-2 rounded font-black uppercase text-[10px]">{editingId ? 'Update' : 'Add Slab'}</button>
+                                <button onClick={() => setCurrent({ bundle: '', gL:'', gW:'', nL:'', nW:'', photo: null })} className="bg-slate-700 px-3 py-2 rounded text-[10px] uppercase font-bold text-slate-400">Clear</button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* PACKING LIST TABLE */}
-                    <div className="bg-white border border-slate-200 overflow-hidden shadow-sm report-box">
+                    {/* TABLE */}
+                    <div className="bg-white border border-slate-200 shadow-sm report-box">
                         <table className="w-full text-center">
-                            <thead className="bg-slate-50 border-b-2 border-slate-100">
-                                <tr className="text-[10px] uppercase font-black text-slate-500 tracking-wider">
-                                    <th className="p-4 text-left">Slab No</th>
-                                    <th className="p-4">Bundle</th>
-                                    <th className="p-4">Photo</th>
-                                    <th className="p-4">Gross (cm)</th>
-                                    <th className="p-4 text-green-700">Net (cm)</th>
-                                    <th className="p-4 text-blue-900">Area (SQM)</th>
-                                    <th className="p-4 no-print">Action</th>
+                            <thead className="bg-slate-50 border-b italic">
+                                <tr className="text-[9px] uppercase font-black text-slate-500">
+                                    <th className="p-3 text-left">Slab No</th>
+                                    <th className="p-3">Bundle</th>
+                                    <th className="p-3">Photo</th>
+                                    <th className="p-3 text-slate-400">Gross</th>
+                                    <th className="p-3 text-green-700">Net Dim</th>
+                                    <th className="p-3">SQM</th>
+                                    <th className="p-3 no-print">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {entries.map(e => (
-                                    <tr key={e.id} className="text-xs hover:bg-blue-50/20">
-                                        <td className="p-4 text-left font-black text-blue-900 italic">{e.slabNo}</td>
-                                        <td className="p-4 font-bold text-slate-600 uppercase">{e.bundle || '-'}</td>
-                                        <td className="p-2">
-                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover rounded shadow-sm print-photo" /> : <span className="text-slate-300">-</span>}
+                                    <tr key={e.id} className="text-xs">
+                                        <td className="p-3 text-left font-black text-blue-900 italic">{e.slabNo}</td>
+                                        <td className="p-3 font-bold text-slate-600">{e.bundle || '-'}</td>
+                                        <td className="p-1">
+                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover rounded print-photo shadow-sm border" /> : '-'}
                                         </td>
-                                        <td className="p-4 text-slate-400">{e.gL} x {e.gW}</td>
-                                        <td className="p-4 font-black text-green-700">{e.nL} x {e.nW}</td>
-                                        <td className="p-4 font-black text-sm">{e.nSqm}</td>
-                                        <td className="p-4 no-print">
-                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold mr-4">EDIT</button>
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-300">✕</button>
+                                        <td className="p-3 text-slate-400">{e.gL}x{e.gW}</td>
+                                        <td className="p-3 font-black text-green-700">{e.nL}x{e.nW}</td>
+                                        <td className="p-3 font-black">{e.nSqm}</td>
+                                        <td className="p-3 no-print text-[10px]">
+                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold mr-3 underline">EDIT</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400">✕</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -237,31 +214,22 @@
                         </table>
                     </div>
 
-                    {/* FOOTER SUMMARY */}
-                    <div className="mt-8 flex flex-col md:flex-row justify-between items-end gap-6 border-t pt-8">
+                    {/* TOTALS */}
+                    <div className="mt-6 flex justify-between items-end border-t-2 border-slate-100 pt-6">
                         <div className="flex gap-4">
-                            <div className="bg-blue-900 text-white px-8 py-4 rounded-lg shadow-xl">
-                                <p className="text-[9px] font-black uppercase opacity-60 tracking-widest mb-1">Total Net Area</p>
-                                <p className="text-3xl font-black">{totals.area} m²</p>
+                            <div className="bg-blue-900 text-white px-6 py-3 rounded">
+                                <p className="text-[8px] font-black uppercase opacity-60 mb-1">Total Net Area</p>
+                                <p className="text-2xl font-black">{totals.area} m²</p>
                             </div>
-                            <div className="bg-green-700 text-white px-8 py-4 rounded-lg shadow-xl">
-                                <p className="text-[9px] font-black uppercase opacity-60 tracking-widest mb-1">Est. Weight</p>
-                                <p className="text-3xl font-black">{totals.mt} MT</p>
-                            </div>
-                        </div>
-                        <div className="text-right min-w-[250px]">
-                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Checked By Supervisor</p>
-                            <div className="border-t-2 border-slate-900 pt-2 font-black uppercase tracking-widest text-blue-900">
-                                {header.supervisor || 'Signature'}
+                            <div className="bg-green-700 text-white px-6 py-3 rounded">
+                                <p className="text-[8px] font-black uppercase opacity-60 mb-1">Gross Weight</p>
+                                <p className="text-2xl font-black">{totals.mt} MT</p>
                             </div>
                         </div>
-                    </div>
-
-                    {/* RESET BUTTON */}
-                    <div className="mt-16 text-center no-print">
-                        <button onClick={clearAllData} className="bg-red-50 text-red-300 hover:bg-red-600 hover:text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
-                            Emergency Reset All Data
-                        </button>
+                        <div className="text-right border-t-2 border-black pt-1 px-4 min-w-[200px]">
+                            <p className="text-[9px] font-black uppercase text-slate-400">Supervisor Signature</p>
+                            <p className="font-black text-sm uppercase text-blue-900">{header.supervisor || 'Signature'}</p>
+                        </div>
                     </div>
                 </div>
             );
