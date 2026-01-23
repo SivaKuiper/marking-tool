@@ -3,7 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEIPL - Professional Inspection Tool</title>
+    <title>KEIPL - Inspection Tool</title>
+    <script>
+        try {
+            const version = "v7.2";
+            const currentVer = localStorage.getItem('keipl_version');
+            if (currentVer !== version) {
+                localStorage.clear(); 
+                localStorage.setItem('keipl_version', version);
+                console.log("Old data cleared for compatibility.");
+            }
+        } catch(e) { console.error("Storage error:", e); }
+    </script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,174 +23,149 @@
         @media print {
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
-            .report-container { border: none !important; box-shadow: none !important; }
             table { border-collapse: collapse; width: 100%; border: 1px solid black !important; }
-            th, td { border: 1px solid black !important; padding: 4px; font-size: 9px !important; }
+            th, td { border: 1px solid black !important; padding: 4px; font-size: 10px !important; }
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-900">
+<body class="bg-gray-50">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
         function App() {
-            // State Management
+            // Header State
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('keipl_header_v7');
-                return saved ? JSON.parse(saved) : { marker: '', supervisor: '', container: '', colour: '', defThickness: '2', allowance: '0' };
+                const saved = localStorage.getItem('keipl_h');
+                return saved ? JSON.parse(saved) : { marker:'', supervisor:'', container:'', colour:'', defThick:'2', allowance:'0' };
             });
 
+            // Entries State
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('keipl_entries_v7');
+                const saved = localStorage.getItem('keipl_e');
                 return saved ? JSON.parse(saved) : [];
             });
 
-            const [current, setCurrent] = useState({ gL: '', gW: '', nL: '', nW: '', photo: null });
+            const [current, setCurrent] = useState({ gL: '', gW: '', nL: '', nW: '' });
 
-            // Auto-Save
-            useEffect(() => { localStorage.setItem('keipl_header_v7', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('keipl_entries_v7', JSON.stringify(entries)); }, [entries]);
+            // Persistent Saving
+            useEffect(() => { localStorage.setItem('keipl_h', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_e', JSON.stringify(entries)); }, [entries]);
 
-            // Auto-Allowance Calculation
-            const handleGrossInput = (field, value) => {
-                const num = parseFloat(value) || 0;
-                const deduct = parseFloat(header.allowance) || 0;
-                const net = num > deduct ? num - deduct : num;
-
-                setCurrent(prev => ({
-                    ...prev,
-                    [field]: value,
-                    [field === 'gL' ? 'nL' : 'nW']: net.toString()
-                }));
+            // Auto-Allowance Logic
+            const handleInput = (f, v) => {
+                const val = parseFloat(v) || 0;
+                const ded = parseFloat(header.allowance) || 0;
+                const net = val > ded ? val - ded : val;
+                setCurrent(p => ({ ...p, [f]: v, [f==='gL'?'nL':'nW']: net.toString() }));
             };
 
-            const addEntry = () => {
-                if (!current.gL || !current.gW) return alert("Please enter dimensions");
-                
-                const gSqm = (parseFloat(current.gL) * parseFloat(current.gW)) / 10000;
-                const nSqm = (parseFloat(current.nL) * parseFloat(current.nW)) / 10000;
-                const weight = (gSqm * (parseFloat(header.defThickness) / 100) * 2850).toFixed(0);
+            const addSlab = () => {
+                if (!current.gL || !current.gW) return;
+                const gS = (parseFloat(current.gL)*parseFloat(current.gW))/10000;
+                const nS = (parseFloat(current.nL)*parseFloat(current.nW))/10000;
+                const kg = (gS * (parseFloat(header.defThick)/100) * 2850).toFixed(0);
 
                 const newSlab = {
                     ...current,
                     id: Date.now(),
                     slabNo: `KEIPL/${(entries.length + 1).toString().padStart(2, '0')}`,
-                    gSqm: gSqm.toFixed(3),
-                    nSqm: nSqm.toFixed(3),
-                    weight: weight,
-                    thick: header.defThickness
+                    nSqm: nS.toFixed(3),
+                    wt: kg
                 };
-
                 setEntries([newSlab, ...entries]);
-                setCurrent({ gL: '', gW: '', nL: '', nW: '', photo: null });
+                setCurrent({ gL:'', gW:'', nL:'', nW:'' });
             };
 
             const downloadExcel = () => {
-                let csv = "Slab No,Gross L,Gross W,Net L,Net W,Thick,Net SQM,Weight KG\n";
-                entries.forEach(e => {
-                    csv += `${e.slabNo},${e.gL},${e.gW},${e.nL},${e.nW},${e.thick},${e.nSqm},${e.weight}\n`;
-                });
+                let csv = "Slab No,Gross L,Gross W,Net L,Net W,Net SQM,Weight KG\n";
+                entries.forEach(e => { csv += `${e.slabNo},${e.gL},${e.gW},${e.nL},${e.nW},${e.nSqm},${e.wt}\n`; });
                 const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
+                a.href = URL.createObjectURL(blob);
                 a.download = `KEIPL_${header.container || 'Report'}.csv`;
                 a.click();
             };
 
             const totals = useMemo(() => {
-                const netArea = entries.reduce((acc, e) => acc + parseFloat(e.nSqm), 0);
-                const totalWeight = entries.reduce((acc, e) => acc + parseFloat(e.weight), 0);
-                return { area: netArea.toFixed(3), mt: (totalWeight / 1000).toFixed(3) };
+                const area = entries.reduce((a, b) => a + parseFloat(b.nSqm), 0);
+                const weight = entries.reduce((a, b) => a + parseFloat(b.wt), 0);
+                return { area: area.toFixed(3), mt: (weight/1000).toFixed(3) };
             }, [entries]);
 
             return (
-                <div className="max-w-5xl mx-auto p-4 md:p-8 report-container">
-                    {/* Header Section */}
-                    <div className="bg-white p-6 border-b-4 border-blue-900 shadow-sm mb-6">
-                        <div className="flex justify-between items-center mb-6">
+                <div className="max-w-4xl mx-auto p-4 md:pt-10">
+                    {/* BRANDING */}
+                    <div className="bg-white p-6 border border-gray-200 shadow-sm mb-4">
+                        <div className="flex justify-between items-start border-b pb-4 mb-4">
                             <div>
-                                <h1 className="text-3xl font-black text-blue-900 tracking-tighter">KUIPER</h1>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Exports & Imports Pvt Ltd</p>
+                                <h1 className="text-2xl font-black text-blue-900 leading-none">KUIPER</h1>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Exports & Imports Pvt Ltd</p>
                             </div>
                             <div className="flex gap-2 no-print">
-                                <button onClick={downloadExcel} className="bg-green-600 text-white px-4 py-2 rounded text-xs font-bold uppercase hover:bg-green-700">Download Excel</button>
-                                <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded text-xs font-bold uppercase">Print PDF</button>
+                                <button onClick={downloadExcel} className="bg-green-600 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">Excel</button>
+                                <button onClick={() => window.print()} className="bg-blue-900 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase">PDF</button>
                             </div>
                         </div>
-
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                            {['marker', 'supervisor', 'container', 'colour', 'defThickness'].map(key => (
-                                <div key={key}>
-                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">{key === 'defThickness' ? 'Thick (cm)' : key}</label>
-                                    <input className="w-full border-b border-gray-300 py-1 text-sm font-bold outline-none focus:border-blue-500" 
-                                           value={header[key]} onChange={e => setHeader({...header, [key]: e.target.value})} />
+                            {['marker', 'supervisor', 'container', 'colour', 'defThick', 'allowance'].map(k => (
+                                <div key={k}>
+                                    <label className="block text-[8px] font-bold text-gray-400 uppercase">{k}</label>
+                                    {k === 'allowance' ? (
+                                        <select className="w-full border-b font-bold text-xs py-1 outline-none" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})}>
+                                            {[0, 2, 3, 5, 10].map(v => <option key={v} value={v}>{v} cm</option>)}
+                                        </select>
+                                    ) : (
+                                        <input className="w-full border-b font-bold text-xs py-1 outline-none" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
+                                    )}
                                 </div>
                             ))}
-                            <div>
-                                <label className="block text-[9px] font-bold text-blue-600 uppercase">Auto-Allowance</label>
-                                <select className="w-full border-b border-gray-300 py-1 text-sm font-bold outline-none" 
-                                        value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
-                                    <option value="0">0 cm</option>
-                                    <option value="2">2 cm</option>
-                                    <option value="3">3 cm</option>
-                                    <option value="5">5 cm</option>
-                                    <option value="10">10 cm</option>
-                                </select>
-                            </div>
                         </div>
                     </div>
 
-                    {/* Input Section */}
-                    <div className="no-print bg-slate-800 p-6 rounded-xl shadow-lg mb-8 text-white">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Gross Dimensions (cm)</label>
+                    {/* ENTRY FORM */}
+                    <div className="no-print bg-gray-900 p-6 rounded-lg shadow-lg mb-6 text-white">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
+                            <div className="col-span-2">
+                                <label className="block text-[10px] font-bold mb-2 uppercase text-gray-400">Gross L x W (cm)</label>
                                 <div className="flex gap-2">
-                                    <input type="number" placeholder="L" className="w-full p-2 rounded text-black font-bold" 
-                                           value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
-                                    <input type="number" placeholder="W" className="w-full p-2 rounded text-black font-bold" 
-                                           value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
+                                    <input type="number" placeholder="Length" className="w-full p-2 rounded text-black font-bold outline-none" value={current.gL} onChange={e => handleInput('gL', e.target.value)} />
+                                    <input type="number" placeholder="Width" className="w-full p-2 rounded text-black font-bold outline-none" value={current.gW} onChange={e => handleInput('gW', e.target.value)} />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-green-400 uppercase mb-2">Net Dimensions (Calculated)</label>
+                            <div className="col-span-2">
+                                <label className="block text-[10px] font-bold mb-2 uppercase text-green-400">Net L x W (Automatic)</label>
                                 <div className="flex gap-2">
-                                    <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold" 
-                                           value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                    <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold" 
-                                           value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
+                                    <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                    <input type="number" className="w-full p-2 rounded bg-green-50 text-black font-bold outline-none" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                 </div>
                             </div>
-                            <button onClick={addEntry} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded uppercase transition-all shadow-lg">Add Slab</button>
+                            <button onClick={addSlab} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 rounded uppercase text-xs shadow-md">Add Slab</button>
                         </div>
                     </div>
 
-                    {/* Table Section */}
-                    <div className="bg-white shadow-sm border border-gray-200 overflow-hidden">
-                        <table className="w-full border-collapse">
+                    {/* LIST TABLE */}
+                    <div className="bg-white border border-gray-200 overflow-hidden shadow-sm">
+                        <table className="w-full">
                             <thead className="bg-gray-50 border-b">
-                                <tr className="text-[10px] uppercase text-gray-500 tracking-wider">
-                                    <th className="p-3 text-left">Slab No</th>
-                                    <th className="p-3 text-center">Gross (L x W)</th>
-                                    <th className="p-3 text-center text-green-700">Net (L x W)</th>
-                                    <th className="p-3 text-center">Net Area</th>
-                                    <th className="p-3 text-center">Weight</th>
-                                    <th className="p-3 text-right no-print">Action</th>
+                                <tr className="text-[9px] uppercase font-bold text-gray-400">
+                                    <th className="p-3 text-left">Slab ID</th>
+                                    <th className="p-3 text-center">Gross</th>
+                                    <th className="p-3 text-center">Net</th>
+                                    <th className="p-3 text-center text-blue-900">Net SQM</th>
+                                    <th className="p-3 text-right no-print">Del</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {entries.map(e => (
-                                    <tr key={e.id} className="hover:bg-gray-50">
+                                    <tr key={e.id} className="text-xs">
                                         <td className="p-3 font-black text-blue-900">{e.slabNo}</td>
-                                        <td className="p-3 text-center text-xs text-gray-400">{e.gL} x {e.gW}</td>
-                                        <td className="p-3 text-center text-xs font-bold text-green-700">{e.nL} x {e.nW}</td>
-                                        <td className="p-3 text-center text-xs font-bold">{e.nSqm} m²</td>
-                                        <td className="p-3 text-center text-xs text-gray-500 font-mono">{e.weight} kg</td>
+                                        <td className="p-3 text-center text-gray-400">{e.gL} x {e.gW}</td>
+                                        <td className="p-3 text-center font-bold text-green-700">{e.nL} x {e.nW}</td>
+                                        <td className="p-3 text-center font-black">{e.nSqm}</td>
                                         <td className="p-3 text-right no-print">
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400 hover:text-red-600 font-bold">✕</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-300 hover:text-red-600">✕</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -187,26 +173,27 @@
                         </table>
                     </div>
 
-                    {/* Footer Summary */}
-                    <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
-                        <div className="bg-blue-900 p-6 rounded text-white flex justify-between items-center shadow-lg">
+                    {/* SUMMARY FOOTER */}
+                    <div className="mt-6 flex flex-col md:flex-row justify-between items-center gap-4 border-t pt-6">
+                        <div className="flex gap-10">
                             <div>
-                                <p className="text-[10px] font-bold uppercase opacity-60">Total Container Payload</p>
-                                <p className="text-3xl font-black">{totals.area} m²</p>
+                                <p className="text-[8px] font-bold text-gray-400 uppercase">Total Payload</p>
+                                <p className="text-2xl font-black text-blue-900">{totals.area} m²</p>
                             </div>
-                            <div className="text-right">
-                                <p className="text-[10px] font-bold uppercase opacity-60">Gross Weight</p>
-                                <p className="text-2xl font-black text-green-400">{totals.mt} MT</p>
+                            <div>
+                                <p className="text-[8px] font-bold text-gray-400 uppercase">Est. Weight</p>
+                                <p className="text-2xl font-black text-green-600">{totals.mt} MT</p>
                             </div>
                         </div>
-                        <div className="text-right pr-4">
-                            <p className="text-xs font-bold uppercase text-gray-400 mb-1">Supervisor Verification</p>
-                            <p className="text-sm font-black border-t-2 border-gray-900 pt-1 inline-block min-w-[150px] uppercase tracking-widest">{header.supervisor || 'Pending signature'}</p>
+                        <div className="text-right">
+                            <p className="text-[9px] font-black border-t-2 border-black pt-1 min-w-[140px] uppercase">
+                                Supervisor: {header.supervisor || "Pending"}
+                            </p>
                         </div>
                     </div>
 
-                    <div className="mt-12 text-center no-print">
-                        <button onClick={() => { if(confirm("Clear everything?")) { localStorage.clear(); location.reload(); } }} className="text-[10px] font-bold text-red-400 underline uppercase tracking-widest">Factory Reset System</button>
+                    <div className="mt-10 text-center no-print">
+                        <button onClick={() => { if(confirm("Clear All?")) { localStorage.clear(); location.reload(); } }} className="text-[9px] text-gray-300 uppercase tracking-widest hover:text-red-400">Clear Data Memory</button>
                     </div>
                 </div>
             );
