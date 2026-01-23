@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEIPL - Global Inspection System</title>
+    <title>KEIPL - Professional Inspection Suite</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {
-            .no-print { display: none !important; }
-            body { background: white; padding: 0; }
-            .report-box { border: 1px solid #000 !important; box-shadow: none !important; }
-            th, td { border: 1px solid #000 !important; padding: 6px; font-size: 10px !important; }
+            .no-print, .hide-on-report { display: none !important; }
+            body { background: white; padding: 0; margin: 0; }
+            .report-box { border: 1px solid #000 !important; box-shadow: none !important; margin-bottom: 10px !important; }
+            th, td { border: 1px solid #e2e8f0 !important; padding: 4px; font-size: 9px !important; }
+            .print-card { border: 1px solid #e2e8f0 !important; }
         }
+        .excel-header { background-color: #1e3a8a; color: white; font-weight: bold; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -25,15 +27,16 @@
 
         function App() {
             const [header, setHeader] = useState(() => {
-                const saved = localStorage.getItem('keipl_h_v85');
+                const saved = localStorage.getItem('keipl_h_v87');
                 return saved ? JSON.parse(saved) : { 
                     customer: '', container: '', factory: '', destination: '', 
-                    colour: '', marker: '', supervisor: '', defThick: '2', allowance: '0' 
+                    colour: '', marker: '', supervisor: '', defThick: '2', allowance: '0',
+                    reportNo: '', invoiceNo: '', inspectDate: new Date().toISOString().split('T')[0]
                 };
             });
 
             const [entries, setEntries] = useState(() => {
-                const saved = localStorage.getItem('keipl_e_v85');
+                const saved = localStorage.getItem('keipl_e_v87');
                 return saved ? JSON.parse(saved) : [];
             });
 
@@ -42,8 +45,8 @@
             const [editingId, setEditingId] = useState(null);
             const [filterRange, setFilterRange] = useState('All');
 
-            useEffect(() => { localStorage.setItem('keipl_h_v85', JSON.stringify(header)); }, [header]);
-            useEffect(() => { localStorage.setItem('keipl_e_v85', JSON.stringify(entries)); }, [entries]);
+            useEffect(() => { localStorage.setItem('keipl_h_v87', JSON.stringify(header)); }, [header]);
+            useEffect(() => { localStorage.setItem('keipl_e_v87', JSON.stringify(entries)); }, [entries]);
 
             const handleGrossInput = (field, val) => {
                 const num = parseFloat(val) || 0;
@@ -57,72 +60,76 @@
                 const gS = (parseFloat(current.gL)*parseFloat(current.gW))/10000;
                 const nS = (parseFloat(current.nL)*parseFloat(current.nW))/10000;
                 const kg = (gS * (parseFloat(header.defThick)/100) * 2850).toFixed(0);
+                const absAll = (gS - nS).toFixed(3);
 
                 if (editingId) {
-                    setEntries(entries.map(e => e.id === editingId ? { ...e, ...current, gSqm: gS.toFixed(3), nSqm: nS.toFixed(3), wt: kg } : e));
+                    setEntries(entries.map(e => e.id === editingId ? { ...e, ...current, gSqm: gS.toFixed(3), nSqm: nS.toFixed(3), wt: kg, absAll } : e));
                     setEditingId(null);
                 } else {
                     const newSlab = {
                         ...current, id: Date.now(),
                         slabNo: `KEIPL/${(entries.length + 1).toString().padStart(2, '0')}`,
-                        gSqm: gS.toFixed(3), nSqm: nS.toFixed(3), wt: kg, thick: header.defThick
+                        gSqm: gS.toFixed(3), nSqm: nS.toFixed(3), wt: kg, absAll, 
+                        allType: header.allowance, thick: header.defThick
                     };
                     setEntries([newSlab, ...entries]);
                 }
                 setCurrent({ gL:'', gW:'', nL:'', nW:'', photo: null });
             };
 
-            // Professional Formatted Excel Export
-            const exportToExcel = () => {
-                const table = document.getElementById("main-table").outerHTML;
-                const template = `
-                    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-                    <head><style>
-                        table { border-collapse: collapse; width: 100%; }
-                        th { background-color: #1e3a8a; color: #ffffff; border: 1px solid #000; font-weight: bold; }
-                        td { border: 1px solid #000; text-align: center; }
-                        .header-cell { background-color: #f1f5f9; font-weight: bold; text-align: left; padding: 5px; }
-                    </style></head>
-                    <body>
-                        <table>
-                            <tr><td colspan="6" style="font-size:24px; font-weight:bold; color:#1e3a8a;">KUIPER EXPORTS & IMPORTS PVT LTD</td></tr>
-                            <tr><td colspan="6" style="font-size:16px;">PACKING LIST - ${header.container}</td></tr>
-                            <tr><td class="header-cell">Customer:</td><td colspan="2">${header.customer}</td><td class="header-cell">Factory:</td><td colspan="2">${header.factory}</td></tr>
-                            <tr><td class="header-cell">Colour:</td><td colspan="2">${header.colour}</td><td class="header-cell">Thickness:</td><td colspan="2">${header.defThick} cm</td></tr>
-                            <tr><td colspan="6"></td></tr>
-                        </table>
-                        ${table}
-                    </body></html>`;
-                const blob = new Blob([template], { type: "application/vnd.ms-excel" });
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = `KEIPL_REPORT_${header.container || 'LIST'}.xls`;
-                a.click();
-            };
-
             const stats = useMemo(() => {
                 const totalG = entries.reduce((a, b) => a + parseFloat(b.gSqm), 0);
                 const totalN = entries.reduce((a, b) => a + parseFloat(b.nSqm), 0);
                 const totalW = entries.reduce((a, b) => a + parseFloat(b.wt), 0);
-                
                 const cat = { below200: 0, over200: 0, over250: 0, over300: 0 };
                 entries.forEach(e => {
                     const l = parseFloat(e.nL);
-                    if (l >= 300) cat.over300++;
-                    else if (l >= 250) cat.over250++;
-                    else if (l >= 200) cat.over200++;
-                    else cat.below200++;
+                    if (l >= 300) cat.over300++; else if (l >= 250) cat.over250++;
+                    else if (l >= 200) cat.over200++; else cat.below200++;
                 });
-
+                const getPct = (val) => entries.length > 0 ? ((val / entries.length) * 100).toFixed(0) : 0;
                 return { 
-                    gArea: totalG.toFixed(3), 
-                    nArea: totalN.toFixed(3), 
+                    gArea: totalG.toFixed(3), nArea: totalN.toFixed(3), 
                     absAllow: (totalG - totalN).toFixed(3),
                     pctAllow: totalG > 0 ? (((totalG - totalN) / totalG) * 100).toFixed(2) : 0,
-                    mt: (totalW / 1000).toFixed(3),
-                    cat
+                    mt: (totalW / 1000).toFixed(3), cat,
+                    catPct: { below200: getPct(cat.below200), over200: getPct(cat.over200), over250: getPct(cat.over250), over300: getPct(cat.over300) }
                 };
             }, [entries]);
+
+            const exportToExcel = () => {
+                const table = document.getElementById("main-table").cloneNode(true);
+                // Remove the action column for Excel
+                table.querySelectorAll('.no-print').forEach(el => el.remove());
+                
+                const template = `
+                    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+                    <head><style>
+                        table { border-collapse: collapse; }
+                        th { background-color: #1e3a8a; color: #ffffff; border: 1px solid #000; font-family: Arial; font-size: 12px; }
+                        td { border: 1px solid #ccc; text-align: center; font-family: Arial; font-size: 11px; }
+                        .title { font-size: 20px; font-weight: bold; color: #1e3a8a; }
+                    </style></head>
+                    <body>
+                        <table>
+                            <tr><td colspan="7" class="title">KUIPER EXPORTS & IMPORTS PVT LTD</td></tr>
+                            <tr><td colspan="7">PACKING LIST REPORT | Date: ${header.inspectDate}</td></tr>
+                            <tr><td><b>Customer:</b></td><td colspan="2">${header.customer}</td><td><b>Container:</b></td><td colspan="3">${header.container}</td></tr>
+                            <tr><td><b>Invoice No:</b></td><td colspan="2">${header.invoiceNo}</td><td><b>Colour:</b></td><td colspan="3">${header.colour}</td></tr>
+                            <tr><td colspan="7"></td></tr>
+                        </table>
+                        ${table.outerHTML}
+                        <table>
+                            <tr><td colspan="4"></td><td><b>Total Net Area:</b></td><td><b>${stats.nArea} m²</b></td></tr>
+                            <tr><td colspan="4"></td><td><b>Total Weight:</b></td><td><b>${stats.mt} MT</b></td></tr>
+                        </table>
+                    </body></html>`;
+                const blob = new Blob([template], { type: "application/vnd.ms-excel" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `KEIPL_PackingList_${header.container}.xls`;
+                a.click();
+            };
 
             const filteredEntries = entries.filter(e => {
                 const l = parseFloat(e.nL);
@@ -135,81 +142,91 @@
 
             return (
                 <div className="max-w-6xl mx-auto p-4 md:py-6">
-                    {/* QUICK ANALYTICS & FILTERS */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 no-print">
-                        <div onClick={() => setFilterRange('All')} className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${filterRange === 'All' ? 'border-blue-600 bg-blue-50 shadow-md' : 'bg-white border-transparent'}`}>
-                            <p className="text-[10px] font-black text-slate-400 uppercase">All Slabs</p>
-                            <p className="text-xl font-black text-blue-900">{entries.length}</p>
-                        </div>
-                        {[
-                            { label: '300+', key: 'over300' },
-                            { label: '250+', key: 'over250' },
-                            { label: '200+', key: 'over200' },
-                            { label: 'Below 200', key: 'below200' }
-                        ].map(f => (
-                            <div key={f.label} onClick={() => setFilterRange(f.label)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${filterRange === f.label ? 'border-blue-600 bg-blue-50 shadow-md' : 'bg-white border-transparent'}`}>
-                                <p className="text-[10px] font-black text-slate-400 uppercase">{f.label}</p>
-                                <p className="text-xl font-black">{stats.cat[f.key]}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* TOP ACTION BAR */}
+                    {/* BUTTONS */}
                     <div className="flex justify-between items-center mb-4 no-print">
                         <button onClick={() => {if(confirm("Wipe all data?")) {localStorage.clear(); location.reload();}}} className="bg-red-500 text-white px-4 py-2 rounded text-[10px] font-black uppercase">Reset</button>
                         <div className="flex gap-2">
-                            <button onClick={exportToExcel} className="bg-green-700 text-white px-4 py-2 rounded text-[10px] font-black uppercase shadow-lg border-b-4 border-green-900">Download Excel</button>
-                            <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded text-[10px] font-black uppercase shadow-lg border-b-4 border-blue-950">PDF Print</button>
+                            <button onClick={exportToExcel} className="bg-green-700 text-white px-6 py-2 rounded text-[10px] font-black uppercase shadow-lg">Download Excel</button>
+                            <button onClick={() => window.print()} className="bg-blue-900 text-white px-6 py-2 rounded text-[10px] font-black uppercase shadow-lg">Print PDF</button>
                         </div>
                     </div>
 
-                    {/* CORPORATE HEADER */}
-                    <div className="bg-white p-8 border-t-[12px] border-blue-900 shadow-sm mb-6 report-box">
-                        <h1 className="text-4xl font-black text-blue-900 tracking-tighter">KUIPER <span className="text-slate-400 text-lg font-normal tracking-normal uppercase ml-2">Inspection List</span></h1>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
-                            {['customer', 'container', 'factory', 'destination', 'colour', 'marker', 'supervisor', 'defThick'].map(k => (
-                                <div key={k} className="border-b">
+                    {/* HEADER */}
+                    <div className="bg-white p-8 border-t-[12px] border-blue-900 shadow-sm mb-4 report-box">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h1 className="text-4xl font-black text-blue-900 tracking-tighter leading-none">KUIPER</h1>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Exports & Imports Pvt Ltd</p>
+                            </div>
+                            <div className="text-right flex flex-col gap-1">
+                                <div className="border-b"><label className="text-[8px] font-black text-slate-400 block uppercase">Inspection Date</label>
+                                <input type="date" className="font-bold text-xs outline-none bg-transparent" value={header.inspectDate} onChange={e => setHeader({...header, inspectDate: e.target.value})} /></div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Report: <span className="text-slate-900 ml-2">{header.reportNo}</span></p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                            {['customer', 'container', 'factory', 'destination', 'colour', 'marker', 'supervisor', 'defThick', 'reportNo', 'invoiceNo'].map(k => (
+                                <div key={k} className={`border-b ${k === 'factory' ? 'hide-on-report' : ''}`}>
                                     <label className="block text-[8px] font-black text-slate-400 uppercase">{k}</label>
                                     <input className="w-full font-bold text-xs py-1 outline-none uppercase bg-transparent" value={header[k]} onChange={e => setHeader({...header, [k]: e.target.value})} />
                                 </div>
                             ))}
+                            <div className="border-b hide-on-report bg-blue-50/50 p-1">
+                                <label className="block text-[8px] font-black text-blue-600 uppercase italic">Auto Allowance Logic</label>
+                                <select className="w-full font-bold text-xs py-1 outline-none bg-transparent" value={header.allowance} onChange={e => setHeader({...header, allowance: e.target.value})}>
+                                    <option value="0">0 cm</option><option value="2">2 cm</option><option value="3">3 cm</option><option value="5">5 cm</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
-                    {/* INPUTS */}
+                    {/* ANALYTICS */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                        <div onClick={() => setFilterRange('All')} className={`p-3 rounded border-2 print-card cursor-pointer ${filterRange === 'All' ? 'border-blue-600 bg-blue-50' : 'bg-white border-slate-100'}`}>
+                            <p className="text-[9px] font-black text-slate-400 uppercase">Total Slabs</p>
+                            <p className="text-2xl font-black text-blue-900">{entries.length}</p>
+                        </div>
+                        {[{ label: '300+', key: 'over300' }, { label: '250+', key: 'over250' }, { label: '200+', key: 'over200' }, { label: 'Below 200', key: 'below200' }].map(f => (
+                            <div key={f.label} onClick={() => setFilterRange(f.label)} className={`p-3 rounded border-2 print-card cursor-pointer ${filterRange === f.label ? 'border-blue-600 bg-blue-50' : 'bg-white border-slate-100'}`}>
+                                <p className="text-[9px] font-black text-slate-400 uppercase">{f.label} cm</p>
+                                <p className="text-2xl font-black text-slate-800">{stats.cat[f.key]} <span className="text-[10px] text-slate-400">({stats.catPct[f.key]}%)</span></p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* BULK / MANUAL (HIDDEN ON PRINT) */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print mb-6">
-                        <div className="md:col-span-2 bg-white p-6 rounded-xl border-2 border-slate-100">
-                             <h3 className="text-[10px] font-black uppercase text-slate-400 mb-4">Bulk Data Paste (GL, GW, NL, NW)</h3>
-                             <textarea className="w-full h-32 p-3 text-xs font-mono border rounded outline-none bg-slate-50" placeholder="Copy rows from Excel and paste here..." value={bulkText} onChange={e => setBulkText(e.target.value)}></textarea>
+                        <div className="md:col-span-2 bg-white p-6 rounded-xl border border-slate-200">
+                             <textarea className="w-full h-32 p-3 text-xs font-mono border rounded outline-none bg-slate-50" placeholder="Paste: GL, GW, NL, NW" value={bulkText} onChange={e => setBulkText(e.target.value)}></textarea>
                              <button onClick={() => {
                                 const rows = bulkText.trim().split('\n');
                                 const newEnts = rows.map((row, i) => {
-                                    const cols = row.includes('\t') ? row.split('\t') : row.split(',');
+                                    const cols = row.split(/\t|,/);
                                     const gl = cols[0]; const gw = cols[1];
                                     if (!gl || isNaN(gl)) return null;
-                                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
                                     const nl = cols[2] || gl; const nw = cols[3] || gw;
+                                    const gS = (parseFloat(gl)*parseFloat(gw))/10000;
                                     const nS = (parseFloat(nl)*parseFloat(nw))/10000;
                                     return {
                                         id: Date.now() + i, slabNo: `KEIPL/${(entries.length + i + 1).toString().padStart(2, '0')}`,
                                         gL:gl, gW:gw, nL:nl, nW:nw, gSqm: gS.toFixed(3), nSqm: nS.toFixed(3),
-                                        wt: (gS * (header.defThick/100) * 2850).toFixed(0), photo: null
+                                        wt: (gS * (header.defThick/100) * 2850).toFixed(0), absAll: (gS-nS).toFixed(3), allType: 'Paste', thick: header.defThick
                                     };
                                 }).filter(x => x);
                                 setEntries([...newEnts, ...entries]); setBulkText('');
-                             }} className="mt-3 bg-slate-800 text-white px-8 py-2.5 rounded text-[10px] font-black uppercase">Process Bulk Paste</button>
+                             }} className="mt-2 bg-slate-800 text-white px-6 py-2 rounded text-[10px] font-black uppercase tracking-widest">Process Bulk</button>
                         </div>
 
-                        <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl flex flex-col justify-between">
-                            <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Entry: {entries.length + 1}</h3>
-                            <div className="space-y-4 my-4">
+                        <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl">
+                            <h3 className="text-[10px] font-black text-blue-400 uppercase mb-4 tracking-widest font-mono italic">Entry Mode: Slab {entries.length + 1}</h3>
+                            <div className="space-y-3">
                                 <div className="grid grid-cols-2 gap-2">
                                     <input type="number" placeholder="Gross L" className="p-2.5 rounded text-black font-bold outline-none" value={current.gL} onChange={e => handleGrossInput('gL', e.target.value)} />
                                     <input type="number" placeholder="Gross W" className="p-2.5 rounded text-black font-bold outline-none" value={current.gW} onChange={e => handleGrossInput('gW', e.target.value)} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input type="number" placeholder="Net L" className="p-2.5 rounded bg-green-50 text-black font-bold outline-none" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
-                                    <input type="number" placeholder="Net W" className="p-2.5 rounded bg-green-50 text-black font-bold outline-none" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
+                                    <input type="number" placeholder="Net L" className="p-2.5 rounded bg-green-50 text-black font-bold" value={current.nL} onChange={e => setCurrent({...current, nL: e.target.value})} />
+                                    <input type="number" placeholder="Net W" className="p-2.5 rounded bg-green-50 text-black font-bold" value={current.nW} onChange={e => setCurrent({...current, nW: e.target.value})} />
                                 </div>
                                 <input type="file" accept="image/*" className="text-[10px] text-slate-500" onChange={(e) => {
                                     const reader = new FileReader();
@@ -217,38 +234,42 @@
                                     reader.readAsDataURL(e.target.files[0]);
                                 }} />
                             </div>
-                            <button onClick={addOrUpdate} className="bg-blue-600 hover:bg-blue-500 py-3.5 rounded font-black uppercase text-xs shadow-lg transition-all">Save Slab {entries.length + 1}</button>
+                            <button onClick={addOrUpdate} className="bg-blue-600 mt-4 py-3 rounded font-black uppercase text-xs w-full shadow-lg">Save Slab</button>
                         </div>
                     </div>
 
                     {/* MAIN TABLE */}
-                    <div className="bg-white border-2 border-slate-100 shadow-sm report-box">
-                        <table className="w-full text-center border-collapse" id="main-table">
+                    <div className="bg-white border report-box overflow-hidden rounded-lg">
+                        <table className="w-full text-center" id="main-table">
                             <thead>
-                                <tr className="bg-slate-800 text-white text-[10px] uppercase">
-                                    <th className="p-3 text-left">Slab No</th>
-                                    <th className="p-3">Photo</th>
-                                    <th className="p-3">Gross (L x W)</th>
-                                    <th className="p-3">Gross SQM</th>
-                                    <th className="p-3 bg-green-700">Net (L x W)</th>
-                                    <th className="p-3 bg-blue-800">Net SQM</th>
-                                    <th className="p-3 no-print">Action</th>
+                                <tr className="bg-slate-800 text-white text-[9px] uppercase">
+                                    <th className="p-2 text-left">Slab No</th>
+                                    <th className="p-2 no-print">Photo</th>
+                                    <th className="p-2">Gross (L x W)</th>
+                                    <th className="p-2">Gross SQM</th>
+                                    <th className="p-2 bg-blue-900/50">Allow. (cm)</th>
+                                    <th className="p-2 bg-red-900/50">Allow. (m²)</th>
+                                    <th className="p-2 bg-green-800">Net Dim</th>
+                                    <th className="p-2 bg-blue-800">Net SQM</th>
+                                    <th className="p-2 no-print">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {filteredEntries.map(e => (
-                                    <tr key={e.id} className="text-xs hover:bg-blue-50/50">
-                                        <td className="p-3 text-left font-black text-blue-900 italic">{e.slabNo}</td>
-                                        <td className="p-1">
-                                            {e.photo ? <img src={e.photo} className="h-14 w-14 mx-auto object-cover rounded print-photo shadow-sm border" /> : '-'}
+                                    <tr key={e.id} className="text-xs">
+                                        <td className="p-2 text-left font-black text-blue-900 italic">{e.slabNo}</td>
+                                        <td className="p-1 no-print">
+                                            {e.photo ? <img src={e.photo} className="h-12 w-12 mx-auto object-cover rounded shadow-sm border" /> : '-'}
                                         </td>
-                                        <td className="p-3 text-slate-500">{e.gL} x {e.gW}</td>
-                                        <td className="p-3 font-medium text-slate-500">{e.gSqm}</td>
-                                        <td className="p-3 font-black text-green-700">{e.nL} x {e.nW}</td>
-                                        <td className="p-3 font-black text-blue-900">{e.nSqm}</td>
-                                        <td className="p-3 no-print">
-                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold mr-4">Edit</button>
-                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-300">✕</button>
+                                        <td className="p-2 text-slate-500">{e.gL}x{e.gW}</td>
+                                        <td className="p-2 text-slate-500">{e.gSqm}</td>
+                                        <td className="p-2 font-bold text-blue-600">{e.allType || '0'} cm</td>
+                                        <td className="p-2 font-bold text-red-500">{e.absAll}</td>
+                                        <td className="p-2 font-black text-green-700">{e.nL}x{e.nW}</td>
+                                        <td className="p-2 font-black text-blue-900">{e.nSqm}</td>
+                                        <td className="p-2 no-print text-[10px]">
+                                            <button onClick={() => {setEditingId(e.id); setCurrent(e); window.scrollTo(0,0);}} className="text-blue-600 font-bold mr-2">Edit</button>
+                                            <button onClick={() => setEntries(entries.filter(x => x.id !== e.id))} className="text-red-400 underline">✕</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -256,43 +277,30 @@
                         </table>
                     </div>
 
-                    {/* SUMMARY DASHBOARD */}
-                    <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 border-t-4 border-blue-900 pt-8 pb-12">
-                        <div className="bg-blue-900 text-white p-6 rounded-2xl shadow-xl">
-                            <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-2">Total Net Payload</p>
-                            <div className="flex items-end gap-2">
-                                <span className="text-4xl font-black">{stats.nArea}</span>
-                                <span className="text-sm mb-1">m²</span>
-                            </div>
-                            <div className="mt-4 pt-4 border-t border-white/20 flex justify-between uppercase font-bold text-[10px]">
-                                <span>Weight:</span>
-                                <span className="text-green-400">{stats.mt} Metric Tons</span>
-                            </div>
+                    {/* FOOTER */}
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6 border-t-4 border-blue-900 pt-6 pb-12">
+                        <div className="bg-blue-900 text-white p-6 rounded shadow-xl flex justify-between items-center">
+                            <div><p className="text-[9px] font-black uppercase opacity-60">Total Area</p><p className="text-3xl font-black">{stats.nArea} m²</p></div>
+                            <div className="text-right"><p className="text-[9px] font-black uppercase opacity-60">Total Weight</p><p className="text-2xl font-black text-green-400">{stats.mt} MT</p></div>
                         </div>
 
-                        <div className="bg-white p-6 rounded-2xl border-2 border-slate-100 shadow-sm">
-                            <p className="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Allowance Summary</p>
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-slate-500">Gross SQM:</span>
-                                    <span className="font-bold">{stats.gArea} m²</span>
-                                </div>
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-slate-500">Total Deduction:</span>
-                                    <span className="font-bold text-red-600">-{stats.absAllow} m²</span>
-                                </div>
-                                <div className="flex justify-between text-xs pt-2 border-t">
-                                    <span className="text-slate-500">Deduction %:</span>
-                                    <span className="font-black text-lg text-red-600">{stats.pctAllow}%</span>
-                                </div>
+                        <div className="bg-white p-6 rounded border-2 border-slate-100 shadow-sm">
+                            <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Deduction Analysis</p>
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <span className="text-[9px] font-black text-slate-500 uppercase italic">Absolute Allowance:</span>
+                                <span className="text-sm font-black text-red-600">{stats.absAllow} m²</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2">
+                                <span className="text-[9px] font-black text-slate-500 uppercase italic">Deduction %:</span>
+                                <span className="text-xl font-black text-blue-900">{stats.pctAllow}%</span>
                             </div>
                         </div>
 
                         <div className="flex flex-col justify-end items-end pr-4">
                             <div className="text-right">
-                                <p className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest italic">Inspection Authority</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest italic leading-none">Verified Official Signature</p>
                                 <div className="border-b-2 border-slate-900 w-48 mb-2"></div>
-                                <p className="font-black text-sm uppercase text-blue-900 italic px-2">{header.supervisor || 'Signature Required'}</p>
+                                <p className="font-black text-xs uppercase text-blue-900 px-2 tracking-widest">{header.supervisor || 'Signature Required'}</p>
                             </div>
                         </div>
                     </div>
